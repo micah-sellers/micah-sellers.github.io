@@ -161,11 +161,11 @@ class ThemeToggle {
     
     if (!isDark) {
       document.documentElement.classList.add('light-mode');
-      this.icon.classList.remove('fa-moon');
-      this.icon.classList.add('fa-sun');
-    } else {
       this.icon.classList.remove('fa-sun');
       this.icon.classList.add('fa-moon');
+    } else {
+      this.icon.classList.remove('fa-moon');
+      this.icon.classList.add('fa-sun');
     }
   }
 
@@ -179,13 +179,13 @@ class ThemeToggle {
     if (isLight) {
       document.documentElement.classList.remove('light-mode');
       localStorage.setItem('theme', 'dark');
-      this.icon.classList.remove('fa-sun');
-      this.icon.classList.add('fa-moon');
+      this.icon.classList.remove('fa-moon');
+      this.icon.classList.add('fa-sun');
     } else {
       document.documentElement.classList.add('light-mode');
       localStorage.setItem('theme', 'light');
-      this.icon.classList.remove('fa-moon');
-      this.icon.classList.add('fa-sun');
+      this.icon.classList.remove('fa-sun');
+      this.icon.classList.add('fa-moon');
     }
   }
 }
@@ -200,14 +200,5 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Initialize theme toggle
   new ThemeToggle();
-  
-  console.log('🌊 Welcome to the Ocean Deep...');
-  
-  new BubbleGenerator();
-  new DepthMeter();
-  new CursorGlow();
-  new SonarSweep();
-  
-  console.log('✨ Oceanic systems initialized');
 });
 
