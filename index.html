@@ -1,117 +1,793 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>Micah Sellers</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="style.css">
-  </head>
-  <body>
-    <!-- Header / Hero -->
-    <header class="header">
-      <button id="theme-toggle" class="theme-toggle" aria-label="Toggle dark mode">
-        <i class="fas fa-moon"></i>
-      </button>
-      <div class="container">
-        <h1>Micah Sellers</h1>
-        <p class="tagline">Mechatronics Engineering Student</p>
-        <nav class="nav-links">
-        <!-- <a href="#about">About</a>
-        <a href="#skills">Skills</a>
-        <a href="#contact">Contact</a> -->
-      </nav>
-
-      </div>
-    </header>
-
-    <!-- About Section -->
-    <section id="about" class="section about">
-      <div class="container">
-        <h2>About</h2>
-        <p>I'm a Mechatronics and Robotics Engineering student at the University of Alberta, passionate about design that bridges mechanical engineering, electronics, and embedded programming. Currently on the AlbertaSat mechanical team, where I simulate, prototype, manufacture, and test systems for the Ex-Alta 3 satellite. As Founding Co-President of the Mechatronics discipline club, I lead a team of 9 executives serving ~100 students. I'm available for 4-8 month co-op positions starting May 2026.</p>
-      </div>
-    </section>
-
-    <!-- Projects Section (commented out) -->
-    <!--
-    <section id="projects" class="section projects">
-      <div class="container">
-        <h2>Projects</h2>
-        <div class="projects-grid">
-          <article class="project-card">
-            <h3>Ex-Alta 3 Satellite Systems</h3>
-            <p>Mechanical systems design, simulation, prototyping, and testing for Alberta's CubeSat. Designed and manufactured modular measurement devices for precise satellite assembly validation.</p>
-            <a href="project1.html" class="link">View Project →</a>
-          </article>
-          <article class="project-card">
-            <h3>Modular Centre of Mass Device</h3>
-            <p>Precision measurement system for accurately determining satellite assembly centre of mass. Engineered to handle full satellite assembly with minimal uncertainty.</p>
-            <a href="project2.html" class="link">View Project →</a>
-          </article>
-          <article class="project-card">
-            <h3>STEM Outreach & Leadership</h3>
-            <p>Led aerospace engineering sessions for underrepresented youth. Founded and scaled Mechatronics Engineering club to 100+ members, managing executive operations.</p>
-            <a href="project3.html" class="link">View Project →</a>
-          </article>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Amber Pages</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+ 
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+ 
+  :root {
+    --parchment:   #f0e2c4;
+    --parchment-dark: #e4d0a8;
+    --parchment-mid:  #ecdbb5;
+    --ink:         #2a1a0e;
+    --ink-mid:     #4a2f1a;
+    --ink-faint:   #7a5c3a;
+    --red:         #8b2020;
+    --gold:        #b8860b;
+    --shadow:      rgba(40, 20, 5, 0.45);
+    --book-w:      1000px;
+    --book-h:      680px;
+    --page-w:      500px;
+  }
+ 
+  html { scroll-behavior: auto; }
+ 
+  body {
+    background: #1a0f07;
+    font-family: 'EB Garamond', Georgia, serif;
+    color: var(--ink);
+    overflow-x: hidden;
+  }
+ 
+  /* ── noise texture overlay ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.07'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.4;
+  }
+ 
+  /* ── scroll driver ── */
+  #scroll-driver {
+    position: relative;
+    /* height set by JS */
+  }
+ 
+  /* ── sticky stage ── */
+  #stage {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+ 
+  /* ── ambient glow ── */
+  #stage::before {
+    content: '';
+    position: absolute;
+    width: 900px; height: 600px;
+    background: radial-gradient(ellipse at 50% 50%,
+      rgba(184,134,11,0.18) 0%,
+      rgba(139,80,40,0.08) 50%,
+      transparent 70%);
+    pointer-events: none;
+  }
+ 
+  /* ── book shell ── */
+  #book {
+    position: relative;
+    width: var(--book-w);
+    height: var(--book-h);
+    perspective: 2200px;
+    filter: drop-shadow(0 40px 60px rgba(0,0,0,0.75));
+  }
+ 
+  /* ── spine ── */
+  #book::before {
+    content: '';
+    position: absolute;
+    left: calc(50% - 10px);
+    top: 0; bottom: 0;
+    width: 20px;
+    background: linear-gradient(to right, #5c3010, #8b5a2b, #5c3010);
+    transform: translateZ(-1px);
+    z-index: 10;
+    border-radius: 2px;
+    box-shadow: 0 0 12px rgba(0,0,0,0.6);
+  }
+ 
+  /* ── left cover (always visible) ── */
+  #left-cover {
+    position: absolute;
+    left: 0; top: 0;
+    width: var(--page-w);
+    height: var(--book-h);
+    background: linear-gradient(135deg, #5c2e00 0%, #8b4513 40%, #6b3000 100%);
+    border-radius: 4px 0 0 4px;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 40px 32px;
+    text-align: center;
+    gap: 16px;
+    z-index: 1;
+  }
+ 
+  #left-cover::before {
+    content: '';
+    position: absolute; inset: 10px;
+    border: 1.5px solid rgba(184,134,11,0.4);
+    pointer-events: none;
+  }
+ 
+  #left-cover .cover-ornament {
+    font-size: 2.2rem; color: var(--gold); opacity: 0.8;
+    line-height: 1;
+  }
+ 
+  #left-cover .cover-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.85rem;
+    font-weight: 700;
+    color: #f0d898;
+    line-height: 1.2;
+    letter-spacing: 0.02em;
+  }
+ 
+  #left-cover .cover-rule {
+    width: 70px; height: 1px;
+    background: var(--gold);
+    opacity: 0.6;
+  }
+ 
+  #left-cover .cover-subtitle {
+    font-family: 'EB Garamond', serif;
+    font-size: 0.85rem;
+    color: rgba(240,216,152,0.7);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+ 
+  /* ── right cover base ── */
+  #right-cover {
+    position: absolute;
+    right: 0; top: 0;
+    width: var(--page-w);
+    height: var(--book-h);
+    background: linear-gradient(135deg, #8b4513 0%, #5c2e00 100%);
+    border-radius: 0 4px 4px 0;
+    z-index: 1;
+  }
+ 
+  /* ── page stack ── */
+  #pages {
+    position: absolute;
+    left: 0; top: 0;
+    width: 100%; height: 100%;
+    z-index: 2;
+  }
+ 
+  /* ── individual page ── */
+  .page {
+    position: absolute;
+    left: 0; top: 0;
+    width: 100%; height: 100%;
+    transform-origin: center center;
+    transform-style: preserve-3d;
+    transition: none;
+    z-index: 3;
+  }
+ 
+  /* pages that have been flipped sit behind */
+  .page.flipped {
+    z-index: 2;
+  }
+ 
+  .page-half {
+    position: absolute;
+    top: 0;
+    width: var(--page-w);
+    height: var(--book-h);
+    transform-style: preserve-3d;
+    transform-origin: left center;
+    /* default: resting right side */
+    left: var(--page-w);
+  }
+ 
+  .page-half.is-left {
+    left: 0;
+    transform-origin: right center;
+  }
+ 
+  /* faces */
+  .face {
+    position: absolute; inset: 0;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    border-radius: 0;
+    overflow: hidden;
+  }
+ 
+  /* right half: front face = recto page, back face = left half revealed */
+  .face.front {
+    background: var(--parchment);
+  }
+ 
+  .face.back {
+    background: var(--parchment-dark);
+    transform: rotateY(180deg);
+  }
+ 
+  /* left half face (the bit that stays, then gets the new spread) */
+  .page-half.is-left .face.front {
+    background: var(--parchment-mid);
+  }
+  .page-half.is-left .face.back {
+    background: var(--parchment);
+    transform: rotateY(180deg);
+  }
+ 
+  /* ── page edge lines (book thickness) ── */
+  .page-edge {
+    position: absolute;
+    right: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: linear-gradient(to right, rgba(0,0,0,0.15), rgba(0,0,0,0.05));
+  }
+ 
+  /* ── page inner paper texture ── */
+  .face::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: repeating-linear-gradient(
+      180deg,
+      transparent,
+      transparent 27px,
+      rgba(160,120,60,0.06) 27px,
+      rgba(160,120,60,0.06) 28px
+    );
+    pointer-events: none;
+  }
+ 
+  /* ── page content ── */
+  .page-content {
+    position: absolute; inset: 0;
+    padding: 36px 32px 36px 36px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow: hidden;
+  }
+ 
+  .page-content.recto { padding-left: 36px; }
+  .page-content.verso { padding-right: 36px; }
+ 
+  .chapter-label {
+    font-family: 'EB Garamond', serif;
+    font-size: 0.65rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 2px;
+  }
+ 
+  .chapter-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.3rem;
+    font-weight: 700;
+    font-style: italic;
+    color: var(--ink);
+    line-height: 1.25;
+    border-bottom: 1px solid rgba(42,26,14,0.15);
+    padding-bottom: 10px;
+    margin-bottom: 4px;
+  }
+ 
+  .drop-cap-para {
+    font-size: 0.875rem;
+    line-height: 1.75;
+    color: var(--ink-mid);
+    text-align: justify;
+    hyphens: auto;
+  }
+ 
+  .drop-cap-para::first-letter {
+    font-family: 'Playfair Display', serif;
+    font-size: 3.4em;
+    font-weight: 700;
+    float: left;
+    line-height: 0.75;
+    margin: 4px 6px 0 0;
+    color: var(--red);
+  }
+ 
+  .body-para {
+    font-size: 0.875rem;
+    line-height: 1.75;
+    color: var(--ink-mid);
+    text-align: justify;
+    hyphens: auto;
+  }
+ 
+  .ornament-divider {
+    text-align: center;
+    color: var(--gold);
+    font-size: 0.9rem;
+    letter-spacing: 0.4em;
+    opacity: 0.7;
+    margin: 4px 0;
+  }
+ 
+  .page-number {
+    position: absolute;
+    bottom: 18px;
+    font-family: 'EB Garamond', serif;
+    font-size: 0.72rem;
+    color: var(--ink-faint);
+    letter-spacing: 0.08em;
+  }
+ 
+  .page-number.left-num  { left: 36px; }
+  .page-number.right-num { right: 36px; }
+ 
+  .running-head {
+    position: absolute;
+    top: 16px;
+    font-family: 'EB Garamond', serif;
+    font-size: 0.62rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .running-head.left-head  { left: 36px; }
+  .running-head.right-head { right: 36px; }
+ 
+  /* ── page shadow during flip ── */
+  .page-shadow {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    background: linear-gradient(to right, rgba(0,0,0,0.25), transparent 60%);
+    opacity: 0;
+    z-index: 5;
+    transition: opacity 0.05s;
+  }
+ 
+  /* ── progress indicator ── */
+  #progress-bar {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 8px;
+    z-index: 100;
+    align-items: center;
+  }
+ 
+  .prog-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: rgba(240,226,196,0.25);
+    transition: background 0.3s, transform 0.3s;
+    cursor: pointer;
+  }
+ 
+  .prog-dot.active {
+    background: rgba(240,226,196,0.9);
+    transform: scale(1.35);
+  }
+ 
+  /* ── scroll hint ── */
+  #scroll-hint {
+    position: fixed;
+    bottom: 68px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'EB Garamond', serif;
+    font-size: 0.72rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgba(240,226,196,0.45);
+    animation: hint-pulse 2.5s ease-in-out infinite;
+    z-index: 100;
+  }
+ 
+  @keyframes hint-pulse {
+    0%, 100% { opacity: 0.4; transform: translateX(-50%) translateY(0); }
+    50%       { opacity: 0.9; transform: translateX(-50%) translateY(-4px); }
+  }
+ 
+  #scroll-hint.hidden { opacity: 0; pointer-events: none; transition: opacity 0.5s; }
+ 
+  /* ── book shadow ── */
+  #book-shadow {
+    position: absolute;
+    bottom: -40px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 680px; height: 50px;
+    background: radial-gradient(ellipse at 50% 20%, rgba(0,0,0,0.55), transparent 70%);
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+ 
+<div id="scroll-driver">
+  <div id="stage">
+ 
+    <div style="position:relative;">
+      <div id="book">
+ 
+        <!-- spine is ::before on #book -->
+        <div id="left-cover">
+          <div class="cover-ornament">✦</div>
+          <div class="cover-title">The Amber<br>Pages</div>
+          <div class="cover-rule"></div>
+          <div class="cover-subtitle">A collection of drifting tales</div>
+          <div class="cover-ornament" style="font-size:1rem; margin-top:8px;">— vol. i —</div>
         </div>
+ 
+        <div id="right-cover"></div>
+ 
+        <!-- Pages injected by JS -->
+        <div id="pages"></div>
+ 
       </div>
-    </section>
-    -->
-
-    <!-- Skills Section -->
-    <section id="skills" class="section skills">
-      <div class="container">
-        <h2>Skills</h2>
-        <div class="skills-grid">
-          <div class="skill-group">
-            <h3>CAD & Simulation</h3>
-            <p>SolidWorks, Onshape, ANSYS, 3D Modeling, Assembly Design</p>
-          </div>
-          <div class="skill-group">
-            <h3>Programming</h3>
-            <p>Python, C++, GitHub, Linux, Embedded Systems</p>
-          </div>
-          <div class="skill-group">
-            <h3>Fabrication</h3>
-            <p>CNC, Vertical Mill, Metal Lathe, 3D Printing, Hand & Power Tools</p>
-          </div>
-          <div class="skill-group">
-            <h3>Safety & Standards</h3>
-            <p>WHMIS, Hazardous Waste, Fire Training, EECERT Electronics Design</p>
-          </div>
-          <div class="skill-group">
-            <h3>Leadership</h3>
-            <p>Team Management, Project Leadership, STEM Outreach, Operations</p>
-          </div>
-          <div class="skill-group">
-            <h3>Software</h3>
-            <p>Microsoft Suite, GitHub, Linux, Technical Documentation</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Contact Section -->
-    <section id="contact" class="section contact">
-      <div class="container">
-        <h2>Get In Touch</h2>
-        <p>Looking for co-op opportunities (4-8 months starting May 2026). Based in Edmonton, AB, available to relocate.</p>
-        <div class="contact-links">
-          <a href="mailto:mjseller@ualberta.ca" class="btn btn-primary">Email</a>
-          <a href="https://linkedin.com/in/micah-sellers/" class="btn btn-secondary" target="_blank">LinkedIn</a>
-        </div>
-      </div>
-    </section>
-
-    <!-- Footer -->
-    <footer class="footer">
-      <div class="container">
-        <p>&copy; <span id="year">2026</span> Micah Sellers. All rights reserved.</p>
-      </div>
-    </footer>
-
-    <script src="index.js"></script>
-  </body>
+      <div id="book-shadow"></div>
+    </div>
+ 
+  </div>
+</div>
+ 
+<div id="progress-bar"></div>
+<div id="scroll-hint">scroll to turn pages</div>
+ 
+<script>
+// ── Page data ──────────────────────────────────────────────────────────────
+const spreads = [
+  {
+    left: {
+      chapterLabel: null,
+      chapterTitle: null,
+      paragraphs: [
+        `Mechatronics Engineer • Designer • Builder`,
+        `Calgary, AB · mjseller@ualberta.ca · 368-997-5527`,
+      ],
+      running: 'Micah Sellers',
+      pageNum: 'i'
+    },
+    right: {
+      chapterLabel: 'Education',
+      chapterTitle: 'Foundation in Motion',
+      paragraphs: [
+        `BSc, Mechatronics and Robotics Engineering, University of Alberta (Present). A rigorous program blending mechanical systems with embedded control and design innovation.`,
+        `Academic Diploma with Honors, AP Capstone Diploma, Tirana International School (2024). Early formation in problem-solving and technical leadership across disciplines.`,
+      ],
+      running: 'Education',
+      pageNum: '1'
+    }
+  },
+  {
+    left: {
+      paragraphs: [
+        `Technical Skills: Python, C++, SolidWorks, Onshape, Ansys, Github, Microsoft Suite.`,
+        `Fabrication Expertise: CNC machines, vertical mill, metal lathe, 3D printing, hand & power tools. Hands-on maker with precision and safety discipline.`,
+      ],
+      running: 'Technical Capabilities',
+      pageNum: '2'
+    },
+    right: {
+      chapterLabel: 'Chapter One',
+      chapterTitle: 'Building from Vision',
+      paragraphs: [
+        `Founding Co-President, Mechatronics Engineering Club (Oct 2025–Present). Built the discipline's first executive team from the ground up. Directed setup and operations while managing 7 executives serving ~100 students.`,
+        `Leadership through nascency—establishing culture, defining goals, and representing the voice of an emerging community within the engineering faculty.`,
+      ],
+      ornament: true,
+      running: 'Chapter One',
+      pageNum: '3'
+    }
+  },
+  {
+    left: {
+      chapterLabel: 'Chapter Two',
+      chapterTitle: 'Reaching for the Stars',
+      paragraphs: [
+        `Mechanical Team Member, AlbertaSat (Sep 2024–Present). Contributed to the Ex-Alta 3 satellite through simulation, prototyping, manufacturing, and rigorous testing of mechanical systems.`,
+        `Designed and built a modular centre of mass determination device—engineering precision for a mission beyond Earth. Also led STEM outreach, igniting curiosity in underrepresented youth and opening pathways to aerospace careers.`,
+      ],
+      running: 'Chapter Two',
+      pageNum: '4'
+    },
+    right: {
+      paragraphs: [
+        `Every system must perform. Every measurement must be true. Every interaction with students is a chance to reshape the future of who belongs in engineering.`,
+        `The work at AlbertaSat demands both technical acuity and a commitment to precision—values that extend far beyond the laboratory.`,
+      ],
+      ornament: true,
+      running: 'Chapter Two',
+      pageNum: '5'
+    }
+  },
+  {
+    left: {
+      chapterLabel: 'Chapter Three',
+      chapterTitle: 'Discipline Under Pressure',
+      paragraphs: [
+        `Line Cook, Saltlik Restaurant (Jun–Aug 2025). Maintained precision and efficiency while orchestrating multiple tasks under strict time constraints in a high-pressure kitchen.`,
+        `Collaborated with fellow cooks, absorbed feedback relentlessly, and ensured unwavering compliance with safety and cleanliness standards. Service demands clarity, teamwork, and the ability to stay calm when orders stack high.`,
+      ],
+      running: 'Chapter Three',
+      pageNum: '6'
+    },
+    right: {
+      paragraphs: [
+        `President, Yearbook Club, Tirana International School (Aug 2023–Jun 2024). Led a 15-member team to deliver a large-scale creative project under tight time and budgetary constraints.`,
+        `Coordinated with external vendors and community stakeholders. Learned that vision requires structure, structure requires trust, and trust requires accountability. The book was delivered on time, on budget, and became a cherished record of community.`,
+      ],
+      ornament: true,
+      running: 'Leadership Archive',
+      pageNum: '7'
+    }
+  },
+  {
+    left: {
+      chapterLabel: 'Credentials & Clarity',
+      chapterTitle: 'Certifications',
+      paragraphs: [
+        `WHMIS 2015 · Hazardous Waste Management · Fire Extinguisher Training · Concepts in Safety Leadership (Engineering) · EECERT (electronics hardware design).`,
+        `Safety is not compliance—it is respect. Respect for the work, for colleagues, for the responsibility embedded in every tool and process.`,
+      ],
+      running: 'Foundations',
+      pageNum: '8'
+    },
+    right: {
+      chapterLabel: 'Beyond the Resume',
+      chapterTitle: 'Additional Notes',
+      paragraphs: [
+        `Class 5 GDL Driver's License (clean abstract). Linux proficiency. Willing to relocate. Availability: 4 or 8 months starting May 2026.`,
+        `Interests: Space exploration, product design, guitar, bouldering. A life lived between precision and creative play—equally comfortable with a soldering iron or a climbing wall.`,
+      ],
+      ornament: true,
+      running: 'Micah Sellers',
+      pageNum: '·'
+    }
+  }
+];
+ 
+// ── Build DOM pages ────────────────────────────────────────────────────────
+const pagesEl = document.getElementById('pages');
+const totalPages = spreads.length;
+ 
+function buildPageContent(data, side) {
+  const wrap = document.createElement('div');
+  wrap.className = `page-content ${side === 'left' ? 'verso' : 'recto'}`;
+ 
+  // Running head
+  if (data.running) {
+    const rh = document.createElement('div');
+    rh.className = `running-head ${side === 'left' ? 'left-head' : 'right-head'}`;
+    rh.textContent = data.running;
+    wrap.appendChild(rh);
+  }
+ 
+  // Chapter label + title
+  if (data.chapterLabel) {
+    const cl = document.createElement('div');
+    cl.className = 'chapter-label';
+    cl.textContent = data.chapterLabel;
+    cl.style.marginTop = '28px';
+    wrap.appendChild(cl);
+  }
+  if (data.chapterTitle) {
+    const ct = document.createElement('div');
+    ct.className = 'chapter-title';
+    ct.textContent = data.chapterTitle;
+    wrap.appendChild(ct);
+  }
+ 
+  // Body
+  data.paragraphs.forEach((txt, i) => {
+    const p = document.createElement('p');
+    p.className = i === 0 && !data.chapterTitle ? 'drop-cap-para' : (i === 0 ? 'body-para' : 'body-para');
+    if (i === 0 && !data.chapterTitle) p.className = 'drop-cap-para';
+    p.textContent = txt;
+    wrap.appendChild(p);
+  });
+ 
+  // Ornament
+  if (data.ornament) {
+    const od = document.createElement('div');
+    od.className = 'ornament-divider';
+    od.textContent = '✦   ✦   ✦';
+    wrap.appendChild(od);
+  }
+ 
+  // Page number
+  const pn = document.createElement('div');
+  pn.className = `page-number ${side === 'left' ? 'left-num' : 'right-num'}`;
+  pn.textContent = data.pageNum;
+  wrap.appendChild(pn);
+ 
+  return wrap;
+}
+ 
+// Each "page" in our book = one spread. When it flips, it reveals the next spread.
+// We create (totalPages - 1) page elements that flip in sequence.
+// Spread 0 is always visible on the base. Flipping page i reveals spread i+1.
+ 
+const pageEls = [];
+ 
+for (let i = 0; i < totalPages - 1; i++) {
+  const page = document.createElement('div');
+  page.className = 'page';
+  page.style.zIndex = totalPages - i + 5;
+ 
+  // The right half flips (rotates around left edge → goes from right side to left side)
+  const rightHalf = document.createElement('div');
+  rightHalf.className = 'page-half';
+  rightHalf.style.transformOrigin = 'left center';
+ 
+  // Front of right half = current spread's recto (right page)
+  const frontFace = document.createElement('div');
+  frontFace.className = 'face front';
+  frontFace.appendChild(buildPageContent(spreads[i].right, 'right'));
+  // page edge
+  const edge = document.createElement('div');
+  edge.className = 'page-edge';
+  frontFace.appendChild(edge);
+ 
+  // Back of right half = next spread's verso (left page of spread i+1)
+  const backFace = document.createElement('div');
+  backFace.className = 'face back';
+  const backContent = buildPageContent(spreads[i + 1].left, 'left');
+  backFace.appendChild(backContent);
+ 
+  rightHalf.appendChild(frontFace);
+  rightHalf.appendChild(backFace);
+ 
+  // The left half: always shows current spread's verso (left page),
+  // but once the right half flies over, we also need the under-left which is next spread's left
+  // Actually for our approach: we just show the base spread left page statically
+  // The left half here just holds a shadow when flipping
+  const leftHalf = document.createElement('div');
+  leftHalf.className = 'page-half is-left';
+ 
+  // The left side front = current spread's verso
+  const leftFront = document.createElement('div');
+  leftFront.className = 'face front';
+  leftFront.appendChild(buildPageContent(spreads[i].left, 'left'));
+ 
+  // The left side back = (not really visible in this animation)
+  const leftBack = document.createElement('div');
+  leftBack.className = 'face back';
+ 
+  leftHalf.appendChild(leftFront);
+  leftHalf.appendChild(leftBack);
+ 
+  page.appendChild(leftHalf);
+  page.appendChild(rightHalf);
+ 
+  pagesEl.appendChild(page);
+  pageEls.push({ page, rightHalf, leftHalf });
+}
+ 
+// Base layer: always shows spread[0] on left and spread[totalPages-1] visible on right
+// Actually we show the first spread as background (below all pages)
+// The last spread is revealed after all pages flip
+ 
+// Background spread (spread 0) is shown by left cover design
+// We need a static back-page under everything
+const basePage = document.createElement('div');
+basePage.style.cssText = `
+  position:absolute;left:0;top:0;width:100%;height:100%;
+  z-index:2; pointer-events:none;
+`;
+ 
+const baseLeft = document.createElement('div');
+baseLeft.style.cssText = `position:absolute;left:0;top:0;width:340px;height:100%;
+  background:var(--parchment-mid);overflow:hidden;`;
+baseLeft.appendChild(buildPageContent(spreads[totalPages-1].left, 'left'));
+ 
+const baseRight = document.createElement('div');
+baseRight.style.cssText = `position:absolute;left:340px;top:0;width:340px;height:100%;
+  background:var(--parchment);overflow:hidden;`;
+baseRight.appendChild(buildPageContent(spreads[totalPages-1].right, 'right'));
+ 
+// texture overlay
+[baseLeft, baseRight].forEach(el => {
+  const tex = document.createElement('div');
+  tex.style.cssText = `position:absolute;inset:0;pointer-events:none;
+    background:repeating-linear-gradient(180deg,transparent,transparent 27px,
+    rgba(160,120,60,0.06) 27px,rgba(160,120,60,0.06) 28px);`;
+  el.appendChild(tex);
+});
+ 
+basePage.appendChild(baseLeft);
+basePage.appendChild(baseRight);
+pagesEl.appendChild(basePage);
+ 
+// ── Progress dots ──────────────────────────────────────────────────────────
+const progressBar = document.getElementById('progress-bar');
+const dots = [];
+for (let i = 0; i <= totalPages - 1; i++) {
+  const d = document.createElement('div');
+  d.className = 'prog-dot' + (i === 0 ? ' active' : '');
+  progressBar.appendChild(d);
+  dots.push(d);
+}
+ 
+// ── Scroll setup ───────────────────────────────────────────────────────────
+const SCROLL_PER_PAGE = 600; // px of scroll per page flip
+const driver = document.getElementById('scroll-driver');
+driver.style.height = (100 * window.innerHeight / 100 + (totalPages - 1) * SCROLL_PER_PAGE) + 'px';
+// Actually just: 100vh + (pages-1)*SCROLL_PER_PAGE total height
+driver.style.height = `calc(100vh + ${(totalPages - 1) * SCROLL_PER_PAGE}px)`;
+ 
+const hint = document.getElementById('scroll-hint');
+let hintHidden = false;
+ 
+function updateBook() {
+  const scrollY = window.scrollY;
+  const maxScroll = (totalPages - 1) * SCROLL_PER_PAGE;
+  const rawProgress = Math.min(Math.max(scrollY / SCROLL_PER_PAGE, 0), totalPages - 1);
+ 
+  if (scrollY > 30 && !hintHidden) {
+    hint.classList.add('hidden');
+    hintHidden = true;
+  }
+ 
+  // Update dots
+  const currentPage = Math.round(rawProgress);
+  dots.forEach((d, i) => {
+    d.classList.toggle('active', i === currentPage);
+  });
+ 
+  // Animate each page
+  pageEls.forEach(({ page, rightHalf, leftHalf }, i) => {
+    // page i flips when rawProgress goes from i to i+1
+    const local = rawProgress - i; // 0 = not started, 1 = fully flipped
+    const t = Math.min(Math.max(local, 0), 1);
+ 
+    if (t <= 0) {
+      // Page resting on right
+      rightHalf.style.transform = 'rotateY(0deg)';
+      rightHalf.style.zIndex = 3;
+      leftHalf.style.transform = 'rotateY(0deg)';
+      page.style.zIndex = (totalPages - i + 5);
+    } else if (t >= 1) {
+      // Page fully flipped to left
+      rightHalf.style.transform = 'rotateY(-180deg)';
+      rightHalf.style.zIndex = 1;
+      leftHalf.style.transform = 'rotateY(0deg)';
+      page.style.zIndex = (i + 1);
+    } else {
+      // Mid-flip
+      // Ease: use smooth cubic
+      const ease = easeInOut(t);
+      const angle = ease * -180;
+      rightHalf.style.transform = `rotateY(${angle}deg)`;
+      rightHalf.style.zIndex = 3;
+      page.style.zIndex = (totalPages + 10);
+    }
+  });
+}
+ 
+function easeInOut(t) {
+  // Smooth cubic ease
+  return t < 0.5
+    ? 4 * t * t * t
+    : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+ 
+window.addEventListener('scroll', updateBook, { passive: true });
+window.addEventListener('resize', () => {
+  driver.style.height = `calc(100vh + ${(totalPages - 1) * SCROLL_PER_PAGE}px)`;
+});
+ 
+updateBook(); // initial render
+</script>
+</body>
 </html>
+ 
+
