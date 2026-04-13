@@ -213,8 +213,8 @@ function updateCrates() {
 
     if (heldIdx !== -1) {
         const c  = crateStates[heldIdx];
-        const offset = 14 + CRATE_H / 2;
-        const tx = last.x + Math.sin(clawAngle) * offset;
+        const offset = CLAW_DEPTH + CRATE_H / 2;
+        const tx = last.x - Math.sin(clawAngle) * offset;
         const ty = last.y + Math.cos(clawAngle) * offset;
         Body.setPosition(c.body, { x: tx, y: ty });
         Body.setVelocity(c.body, { x: last.x - last.px, y: last.y - last.py });
@@ -226,9 +226,9 @@ function updateCrates() {
 
     if (heldIdx !== -1) {
         const c  = crateStates[heldIdx];
-        const offset = 14 + CRATE_H / 2;
+        const offset = CLAW_DEPTH + CRATE_H / 2;
         Body.setPosition(c.body, {
-            x: last.x + Math.sin(clawAngle) * offset,
+            x: last.x - Math.sin(clawAngle) * offset,
             y: last.y + Math.cos(clawAngle) * offset,
         });
         Body.setAngle(c.body, clawAngle);
@@ -256,13 +256,20 @@ function drawCrates() {
         const c = crateStates[i];
         if (c.gone) continue;
 
-        const { x: bx, y: by } = c.body.position;
-        const angle = c.body.angle;
         const held  = (i === heldIdx);
 
         ctx.save();
-        ctx.translate(bx, by);
-        ctx.rotate(angle);
+        if (held) {
+            // Rotate around the rope attachment point (same pivot as CSS claw)
+            const last = nodes[N - 1];
+            ctx.translate(last.x, last.y);
+            ctx.rotate(clawAngle);
+            ctx.translate(0, CLAW_DEPTH + CRATE_H / 2);
+        } else {
+            const { x: bx, y: by } = c.body.position;
+            ctx.translate(bx, by);
+            ctx.rotate(c.body.angle);
+        }
 
         ctx.shadowColor   = 'rgba(0,0,0,0.55)';
         ctx.shadowBlur    = 8;
