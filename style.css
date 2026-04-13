@@ -507,13 +507,13 @@ body.simple-mode .simple-nav {
 
 .project-preview {
     position: absolute;
-    top: 8px;
-    right: 8px;
+    top: 100px;
+    left: 100px;
     width: 155px;
     background: #0c0c0c;
     border: 1.5px solid #333;
     border-radius: 3px;
-    z-index: 4;
+    z-index: 0;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.18s;
