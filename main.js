@@ -1,11 +1,11 @@
 // ── Constants ──────────────────────────────────────────────────────────────
 //og dimensions -> const SCENE_W    = 720;
 //const SCENE_H    = 480;
-const SCENE_W    = 1200;
-const SCENE_H    = 600;
+const SCENE_W    = Math.min(window.innerWidth, 1300);
+const SCENE_H    = 500;
 
 const MIN_X      = 50;
-const MAX_X      = 750;
+const MAX_X      = SCENE_W - 50;
 const ROPE_MIN   = 10;
 const X_SPEED    = 4;
 const ROPE_SPEED = 3;
@@ -26,8 +26,8 @@ const CRATE_X0   = (SCENE_W - (4 * CRATE_W + 3 * CRATE_GAP)) / 2; // 268
 const CLAW_DEPTH = 28;      // px below last rope node to the claw fingertips
 const GRAB_R     = 44;      // grab detection radius in px
 
-const ZONE_X     = 625;     // drop zone left edge (px from scene left)
-const ZONE_W     = 160;     // drop zone width → right edge at 785
+const ZONE_W     = 160;     // drop zone width
+const ZONE_X     = SCENE_W - 50 - ZONE_W;  // drop zone left edge (50px from right)
 
 // ── DOM ────────────────────────────────────────────────────────────────────
 const trolleyEl  = document.getElementById('trolley');
@@ -169,7 +169,7 @@ function landCrate(c) {
     const cx = c.x + CRATE_W / 2;
     if (cx >= ZONE_X && cx <= ZONE_X + ZONE_W) {
         dropZoneEl.classList.add('active');
-        setTimeout(() => { window.location.href = c.page; }, 500);
+        setTimeout(() => { window.location.href = c.page; }, 0); // change the second parameter to adjust delay in ms before navigation
     }
 }
 
