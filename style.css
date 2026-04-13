@@ -24,6 +24,69 @@ body {
     margin-bottom: 20px;
 }
 
+.controls {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+}
+
+.control-pad {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 10px;
+    align-items: center;
+}
+
+.control-top {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+}
+
+.control-bottom {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+}
+
+.control-btn {
+    width: 50px;
+    height: 50px;
+    background: linear-gradient(to bottom, #f7c200, #cf9e00);
+    border: 2px solid #a87e00;
+    border-radius: 6px;
+    color: #333;
+    font-weight: bold;
+    font-size: 18px;
+    cursor: pointer;
+    transition: all 0.08s;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+}
+
+.control-btn:hover {
+    background: linear-gradient(to bottom, #ffd700, #daa520);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.5);
+}
+
+.control-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.control-grab {
+    width: 110px;
+    font-size: 16px;
+    background: linear-gradient(to bottom, #f3610c, #691e07);
+    border-color: #7d542e;
+    color: #fff;
+}
+
+.control-grab:hover {
+    background: linear-gradient(to bottom, #af4609, #531705);
+}
+
 .hint {
     color: #484848;
     font-size: 13px;

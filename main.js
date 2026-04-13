@@ -1,5 +1,5 @@
 // ── Constants ──────────────────────────────────────────────────────────────
-const SCENE_W    = Math.min(window.innerWidth, 900);
+const SCENE_W    = 900;//Math.min(window.innerWidth, 900);
 const SCENE_H    = 500;
 
 const MIN_X      = 50;
@@ -134,6 +134,18 @@ document.addEventListener('keydown', e => {
     if (e.key === ' ') { e.preventDefault(); onSpace(); }
 });
 document.addEventListener('keyup', e => keys.delete(e.key));
+
+// ── On-screen button controls ──────────────────────────────────────────────
+document.querySelectorAll('.control-btn[data-key]').forEach(btn => {
+    const key = btn.dataset.key;
+    btn.addEventListener('mousedown', () => keys.add(key));
+    btn.addEventListener('mouseup', () => keys.delete(key));
+    btn.addEventListener('mouseleave', () => keys.delete(key));
+    btn.addEventListener('touchstart', (e) => { e.preventDefault(); keys.add(key); });
+    btn.addEventListener('touchend', (e) => { e.preventDefault(); keys.delete(key); });
+});
+
+document.querySelector('.control-grab').addEventListener('click', onSpace);
 
 function onSpace() {
     if (heldIdx === -1) {
