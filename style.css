@@ -1,0 +1,246 @@
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background: #111;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    gap: 14px;
+    font-family: sans-serif;
+}
+
+.hint {
+    color: #484848;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+}
+
+/* ── Scene ── */
+
+.scene {
+    position: relative;
+    width: 720px;
+    height: 480px;
+    background: #1c1c1c;
+    border: 2px solid #2c2c2c;
+    overflow: hidden;
+}
+
+/* ceiling mount */
+.scene::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 32px;
+    background: #242424;
+    border-bottom: 2px solid #363636;
+    z-index: 1;
+}
+
+/* floor */
+.scene::after {
+    content: '';
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 50px;
+    background: #242424;
+    border-top: 2px solid #363636;
+    z-index: 0;
+}
+
+/* ── Rope canvas ── */
+
+#ropeCanvas {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 3;
+}
+
+/* ── Rail ── */
+
+.rail {
+    position: absolute;
+    top: 40px;
+    left: 20px;
+    right: 20px;
+    height: 18px;
+    background: linear-gradient(to bottom, #585858, #3c3c3c);
+    border-radius: 4px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+    z-index: 2;
+}
+
+/* end stops */
+.rail::before, .rail::after {
+    content: '';
+    position: absolute;
+    top: -5px;
+    width: 10px;
+    height: 28px;
+    background: #484848;
+    border-radius: 3px;
+}
+.rail::before { left:  -4px; }
+.rail::after  { right: -4px; }
+
+/* ── Trolley ── */
+
+.trolley {
+    position: absolute;
+    top: 30px;
+    width: 50px;
+    height: 44px;
+    background: linear-gradient(to bottom, #f7c200, #cf9e00);
+    border: 2px solid #a87e00;
+    border-radius: 5px;
+    transform: translateX(-50%);
+    z-index: 4;
+    /* left: controlled by JS */
+}
+
+/* wheel nub sitting on rail */
+.trolley::before {
+    content: '';
+    position: absolute;
+    top: -7px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 18px;
+    height: 9px;
+    background: #777;
+    border-radius: 4px 4px 0 0;
+    border: 1px solid #555;
+}
+
+/* ── Claw ── */
+
+.claw {
+    position: absolute;
+    transform: translate(-50%, 0);
+    width: 34px;
+    z-index: 5;
+    /* left and top controlled by JS */
+}
+
+.claw-head {
+    height: 7px;
+    margin: 0 1px;
+    background: #999;
+    border-radius: 2px;
+}
+
+.claw-fingers {
+    position: relative;
+    height: 20px;
+    margin-top: 1px;
+}
+
+.finger {
+    position: absolute;
+    top: 0;
+    width: 5px;
+    height: 20px;
+    background: #888;
+    border-radius: 0 0 4px 4px;
+}
+
+.finger.left {
+    left: 3px;
+    transform-origin: top center;
+    transform: rotate(-18deg);
+}
+
+.finger.right {
+    right: 3px;
+    transform-origin: top center;
+    transform: rotate(18deg);
+}
+
+/* ── Drop zone ── */
+
+.drop-zone {
+    position: absolute;
+    left: 560px;
+    bottom: 50px;   /* flush with floor top */
+    width: 140px;
+    height: 64px;
+    border: 2px dashed rgba(255, 200, 60, 0.3);
+    border-radius: 4px;
+    background: rgba(255, 200, 60, 0.025);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 1;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.drop-zone.active {
+    background: rgba(255, 200, 60, 0.12);
+    border-color: rgba(255, 200, 60, 0.7);
+}
+
+.drop-zone-label {
+    color: rgba(255, 200, 60, 0.35);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    pointer-events: none;
+    user-select: none;
+    transition: color 0.15s;
+}
+
+.drop-zone.active .drop-zone-label {
+    color: rgba(255, 200, 60, 0.7);
+}
+
+/* ── Crates ── */
+
+.crate {
+    position: absolute;
+    width: 64px;
+    height: 64px;
+    background:
+        linear-gradient(to bottom right,
+            transparent calc(50% - 1.5px),
+            rgba(0,0,0,0.3) calc(50% - 1.5px),
+            rgba(0,0,0,0.3) calc(50% + 1.5px),
+            transparent calc(50% + 1.5px)
+        ),
+        linear-gradient(to bottom left,
+            transparent calc(50% - 1.5px),
+            rgba(0,0,0,0.3) calc(50% - 1.5px),
+            rgba(0,0,0,0.3) calc(50% + 1.5px),
+            transparent calc(50% + 1.5px)
+        ),
+        #9b6b3b;
+    border: 3px solid #6b4825;
+    border-radius: 3px;
+    box-shadow: 2px 3px 6px rgba(0,0,0,0.5);
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* left and top controlled by JS */
+}
+
+.crate-label {
+    color: rgba(255, 235, 200, 0.9);
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    text-align: center;
+    pointer-events: none;
+    user-select: none;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+    line-height: 1.2;
+}
