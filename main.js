@@ -1,7 +1,9 @@
 // ── Constants ──────────────────────────────────────────────────────────────
+//og dimensions -> const SCENE_W    = 720;
+//const SCENE_H    = 480;
 const SCENE_W    = 720;
 const SCENE_H    = 480;
-const ANCHOR_Y   = 74;      // trolley bottom (top: 30 + height: 44)
+const ANCHOR_Y   = 90;      // trolley bottom (top: 30 + height: 44)
 
 const MIN_X      = 50;
 const MAX_X      = 670;
