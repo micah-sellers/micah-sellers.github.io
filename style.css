@@ -25,8 +25,8 @@ body {
 
 .scene {
     position: relative;
-    width: 720px;
-    height: 480px;
+    width: var(--scene-w, 800px);
+    height: var(--scene-h, 800px);
     background: #1c1c1c;
     border: 2px solid #2c2c2c;
     overflow: hidden;
@@ -167,9 +167,9 @@ body {
 
 .drop-zone {
     position: absolute;
-    left: 560px;
+    left: var(--zone-x, 625px);
     bottom: 50px;   /* flush with floor top */
-    width: 140px;
+    width: var(--zone-w, 160px);
     height: 64px;
     border: 2px dashed rgba(255, 200, 60, 0.3);
     border-radius: 4px;

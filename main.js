@@ -1,14 +1,12 @@
 // ── Constants ──────────────────────────────────────────────────────────────
 //og dimensions -> const SCENE_W    = 720;
 //const SCENE_H    = 480;
-const SCENE_W    = 720;
-const SCENE_H    = 480;
-const ANCHOR_Y   = 90;      // trolley bottom (top: 30 + height: 44)
+const SCENE_W    = 1200;
+const SCENE_H    = 600;
 
 const MIN_X      = 50;
-const MAX_X      = 670;
+const MAX_X      = 750;
 const ROPE_MIN   = 10;
-const ROPE_MAX   = 264;
 const X_SPEED    = 4;
 const ROPE_SPEED = 3;
 
@@ -21,15 +19,15 @@ const HOLD_WEIGHT = 0.4;    // extra gravity on tip node when holding a crate
 const CRATE_W    = 64;
 const CRATE_H    = 64;
 const CRATE_GAP  = 14;
-const FLOOR_Y    = SCENE_H - 50;                           // 430 — top of floor surface
-const CRATE_REST = FLOOR_Y - CRATE_H;                     // 366 — crate top when at rest
-const CRATE_X0   = (SCENE_W - (4 * CRATE_W + 3 * CRATE_GAP)) / 2; // 211
+const FLOOR_Y    = SCENE_H - 50;                           // 750 — top of floor surface
+const CRATE_REST = FLOOR_Y - CRATE_H;                     // 686 — crate top when at rest
+const CRATE_X0   = (SCENE_W - (4 * CRATE_W + 3 * CRATE_GAP)) / 2; // 268
 
 const CLAW_DEPTH = 28;      // px below last rope node to the claw fingertips
 const GRAB_R     = 44;      // grab detection radius in px
 
-const ZONE_X     = 560;     // drop zone left edge (px from scene left)
-const ZONE_W     = 140;     // drop zone width → right edge at 700
+const ZONE_X     = 625;     // drop zone left edge (px from scene left)
+const ZONE_W     = 160;     // drop zone width → right edge at 785
 
 // ── DOM ────────────────────────────────────────────────────────────────────
 const trolleyEl  = document.getElementById('trolley');
@@ -40,6 +38,25 @@ const ctx        = canvas.getContext('2d');
 canvas.width     = SCENE_W;
 canvas.height    = SCENE_H;
 
+// Link CSS dimensions to JS constants
+const sceneEl = document.getElementById('scene');
+sceneEl.style.setProperty('--scene-w', SCENE_W + 'px');
+sceneEl.style.setProperty('--scene-h', SCENE_H + 'px');
+sceneEl.style.setProperty('--zone-x', ZONE_X + 'px');
+sceneEl.style.setProperty('--zone-w', ZONE_W + 'px');
+
+// Get rope anchor point as the bottom-center of trolley
+function getAnchorY() {
+    const rect = trolleyEl.getBoundingClientRect();
+    const sceneRect = sceneEl.getBoundingClientRect();
+    return rect.bottom - sceneRect.top;
+}
+
+// Get maximum rope length (stops 40px above floor)
+function getRopeMax() {
+    return FLOOR_Y - 80 - getAnchorY();
+}
+
 // ── Rope nodes ─────────────────────────────────────────────────────────────
 // Each node: { x, y, px, py }  (current position + previous for Verlet velocity)
 let trolleyX   = SCENE_W / 2;
@@ -47,9 +64,10 @@ let ropeLength = 80;
 
 const nodes = [];
 (function initNodes() {
+    const anchorY = getAnchorY();
     const seg = ropeLength / (N - 1);
     for (let i = 0; i < N; i++) {
-        const y = ANCHOR_Y + i * seg;
+        const y = anchorY + i * seg;
         nodes.push({ x: trolleyX, y, px: trolleyX, py: y });
     }
 }());
@@ -104,6 +122,7 @@ function onSpace() {
 
 // ── Physics ────────────────────────────────────────────────────────────────
 function updateRope() {
+    const anchorY = getAnchorY();
     const segLen = ropeLength / (N - 1);
 
     // Verlet integration for free nodes 1..N-1
@@ -122,7 +141,7 @@ function updateRope() {
     for (let iter = 0; iter < ITERS; iter++) {
         // Re-pin anchor to trolley bottom center
         nodes[0].x = trolleyX;
-        nodes[0].y = ANCHOR_Y;
+        nodes[0].y = anchorY;
 
         for (let i = 0; i < N - 1; i++) {
             const a  = nodes[i];
@@ -142,7 +161,7 @@ function updateRope() {
 
     // Final anchor pin (constraints may have drifted it slightly)
     nodes[0].x = trolleyX;
-    nodes[0].y = ANCHOR_Y;
+    nodes[0].y = anchorY;
 }
 
 // Called when a falling crate comes to rest — checks for zone landing
@@ -225,10 +244,10 @@ function drawRope() {
 // ── Main loop ──────────────────────────────────────────────────────────────
 function tick() {
     // Movement input
-    if (keys.has('ArrowLeft'))  trolleyX   = Math.max(MIN_X,    trolleyX   - X_SPEED);
-    if (keys.has('ArrowRight')) trolleyX   = Math.min(MAX_X,    trolleyX   + X_SPEED);
-    if (keys.has('ArrowUp'))    ropeLength = Math.max(ROPE_MIN, ropeLength - ROPE_SPEED);
-    if (keys.has('ArrowDown'))  ropeLength = Math.min(ROPE_MAX, ropeLength + ROPE_SPEED);
+    if (keys.has('ArrowLeft'))  trolleyX   = Math.max(MIN_X,         trolleyX   - X_SPEED);
+    if (keys.has('ArrowRight')) trolleyX   = Math.min(MAX_X,         trolleyX   + X_SPEED);
+    if (keys.has('ArrowUp'))    ropeLength = Math.max(ROPE_MIN,      ropeLength - ROPE_SPEED);
+    if (keys.has('ArrowDown'))  ropeLength = Math.min(getRopeMax(),  ropeLength + ROPE_SPEED);
 
     // Physics
     updateRope();
