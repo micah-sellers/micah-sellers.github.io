@@ -7,41 +7,79 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <h1 class="under-development">Under Development</h1>
-    <div class="scene" id="scene">
-        <canvas id="ropeCanvas"></canvas>
-        <div class="rail"></div>
-        <div class="trolley" id="trolley"></div>
-        <div class="claw" id="claw">
-            <div class="claw-head"></div>
-            <div class="claw-fingers">
-                <div class="finger left"></div>
-                <div class="finger right"></div>
-            </div>
-        </div>
-        <div class="zone-sign">drop into zone<br>to navigate</div>
-        <div class="drop-zone" id="dropZone">
-            <span class="drop-zone-label">drop here</span>
-        </div>
-        <div class="crate" data-page="about.html"><span class="crate-label">About</span></div>
-        <div class="crate" data-page="projects.html"><span class="crate-label">Projects</span></div>
-        <div class="crate" data-page="contact.html"><span class="crate-label">Contact</span></div>
-        <div class="crate" data-page="resume.html"><span class="crate-label">Resume</span></div>
+    <button class="mode-toggle" id="modeToggle">Simple View</button>
+    <div class="name-header">
+        <h1 class="name-title">Micah Sellers</h1>
+        <p class="tagline">under development</p>
     </div>
-    <div class="controls">
-        <div class="control-pad">
-            <div class="control-top">
-                <button class="control-btn control-up" data-key="ArrowUp" title="Raise rope">▲</button>
-                <button class="control-btn control-down" data-key="ArrowDown" title="Lower rope">▼</button>
+    <div class="main-row">
+        <aside class="contact-panel">
+            <h2 class="contact-heading">Contact</h2>
+            <ul class="contact-list">
+                <li>
+                    <span class="contact-label">Email</span>
+                    <a class="contact-value" href="mailto:micah@example.com">micah@example.com</a>
+                </li>
+                <li>
+                    <span class="contact-label">LinkedIn</span>
+                    <a class="contact-value" href="https://linkedin.com/in/micah-sellers" target="_blank" rel="noopener">micah-sellers</a>
+                </li>
+                <li>
+                    <span class="contact-label">GitHub</span>
+                    <a class="contact-value" href="https://github.com/micah-sellers" target="_blank" rel="noopener">micah-sellers</a>
+                </li>
+            </ul>
+        </aside>
+        <div class="scene-area">
+            <div class="scene" id="scene">
+                <canvas id="ropeCanvas"></canvas>
+                <div class="rail"></div>
+                <div class="trolley" id="trolley"></div>
+                <div class="claw" id="claw">
+                    <div class="claw-head"></div>
+                    <div class="claw-fingers">
+                        <div class="finger left"></div>
+                        <div class="finger right"></div>
+                    </div>
+                </div>
+                <div class="pipe-shaft"></div>
+                <div class="zone-sign">drop into hole<br>to navigate</div>
+                <div class="drop-zone" id="dropZone">
+                    <span class="drop-zone-label">drop here</span>
+                </div>
+                <div class="project-preview" id="projectPreview">
+                    <div class="preview-header">
+                        <span class="preview-type" id="previewType"></span>
+                        <span class="preview-name" id="previewName"></span>
+                    </div>
+                    <div class="preview-screen">
+                        <img class="preview-img" id="previewImg" alt="">
+                        <div class="preview-empty" id="previewEmpty">NO PREVIEW</div>
+                    </div>
+                </div>
             </div>
-            <div class="control-bottom">
-                <button class="control-btn control-left" data-key="ArrowLeft" title="Move left">◄</button>
-                <button class="control-btn control-grab" data-action="grab" title="Grab / Drop">GRAB</button>
-                <button class="control-btn control-right" data-key="ArrowRight" title="Move right">►</button>
+            <div class="controls">
+                <div class="control-pad">
+                    <div class="control-top">
+                        <button class="control-btn control-up" data-key="ArrowUp" title="Raise rope">▲</button>
+                        <button class="control-btn control-down" data-key="ArrowDown" title="Lower rope">▼</button>
+                    </div>
+                    <div class="control-bottom">
+                        <button class="control-btn control-left" data-key="ArrowLeft" title="Move left">◄</button>
+                        <button class="control-btn control-grab" data-action="grab" title="Grab / Drop">GRAB</button>
+                        <button class="control-btn control-right" data-key="ArrowRight" title="Move right">►</button>
+                    </div>
+                </div>
             </div>
+            <p class="hint">&#8592; &#8594;&nbsp; move &nbsp;&nbsp; &#8593; &#8595;&nbsp; raise / lower &nbsp;&nbsp; SPACE&nbsp; grab / drop</p>
         </div>
     </div>
-    <p class="hint">&#8592; &#8594;&nbsp; move &nbsp;&nbsp; &#8593; &#8595;&nbsp; raise / lower &nbsp;&nbsp; SPACE&nbsp; grab / drop</p>
+    <nav class="simple-nav" id="simpleNav">
+        <a class="simple-nav-link" href="about.html">About</a>
+        <a class="simple-nav-link" href="projects.html">Projects</a>
+        <a class="simple-nav-link" href="contact.html">Contact</a>
+        <a class="simple-nav-link" href="resume.html">Resume</a>
+    </nav>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
     <script src="main.js"></script>
 </body>

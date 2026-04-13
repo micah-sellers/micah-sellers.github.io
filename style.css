@@ -5,7 +5,7 @@
 }
 
 body {
-    background: #111;
+    background: #1c1c1c;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -15,13 +15,143 @@ body {
     font-family: sans-serif;
 }
 
-.under-development {
-    color: #ff6b6b;
-    font-size: 48px;
-    font-weight: bold;
+.name-header {
+    text-align: center;
+}
+
+.name-title {
+    color: #c8cdd2;
+    font-size: 36px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.tagline {
+    color: #555;
+    font-size: 13px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-top: 4px;
+}
+
+.mode-toggle {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #2a2a2a;
+    border: 1px solid #666;
+    color: #c8cdd2;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 14px 26px;
+    border-radius: 5px;
+    cursor: pointer;
+    z-index: 100;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.mode-toggle:hover {
+    background: #363636;
+    border-color: #999;
+    color: #fff;
+}
+
+.simple-nav {
+    display: none;
+    flex-direction: column;
+    gap: 14px;
+    text-align: center;
+}
+
+.simple-nav-link {
+    color: #c8cdd2;
+    text-decoration: none;
+    font-size: 22px;
+    font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    margin-bottom: 20px;
+    transition: color 0.15s;
+}
+
+.simple-nav-link:hover {
+    color: #fff;
+}
+
+/* ── Main row layout ── */
+
+.main-row {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 40px;
+}
+
+.scene-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+}
+
+/* ── Contact panel ── */
+
+.contact-panel {
+    width: 200px;
+    padding-top: 20px;
+    flex-shrink: 0;
+}
+
+.contact-heading {
+    color: #c8cdd2;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-bottom: 18px;
+    border-bottom: 1px solid #333;
+    padding-bottom: 8px;
+}
+
+.contact-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.contact-label {
+    display: block;
+    color: #555;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-bottom: 3px;
+}
+
+.contact-value {
+    color: #8a9ba8;
+    font-size: 13px;
+    text-decoration: none;
+    transition: color 0.15s;
+}
+
+.contact-value:hover {
+    color: #c8cdd2;
+}
+
+/* ── Simple mode ── */
+
+body.simple-mode .main-row {
+    display: none;
+}
+
+body.simple-mode .simple-nav {
+    display: flex;
 }
 
 .controls {
@@ -94,8 +224,8 @@ body {
 }
 
 .hint {
-    color: #484848;
-    font-size: 13px;
+    color: #888888;
+    font-size: 16px;
     letter-spacing: 0.04em;
 }
 
@@ -106,19 +236,13 @@ body {
     width: var(--scene-w, 800px);
     height: var(--scene-h, 800px);
     background: #1c1c1c;
-    border: 2px solid #2c2c2c;
-    overflow: hidden;
+    border: none;
+    overflow: visible;
 }
 
-/* ceiling mount */
+/* ceiling removed — scaffolding drawn on canvas instead */
 .scene::before {
-    content: '';
-    position: absolute;
-    inset: 0 0 auto 0;
-    height: 32px;
-    background: #242424;
-    border-bottom: 2px solid #363636;
-    z-index: 1;
+    display: none;
 }
 
 /* floor drawn on canvas instead — scene::after removed */
@@ -130,7 +254,8 @@ body {
 
 #ropeCanvas {
     position: absolute;
-    inset: 0;
+    top: 0;
+    left: 0;
     pointer-events: none;
     z-index: 3;
 }
@@ -284,6 +409,46 @@ body {
     color: rgba(255, 200, 60, 0.7);
 }
 
+/* ── Pipe shaft ── */
+
+.pipe-shaft {
+    position: absolute;
+    left: var(--zone-x);
+    width: var(--zone-w);
+    top: calc(var(--scene-h) - 50px);   /* FLOOR_Y */
+    height: 100vh;
+    z-index: 1;
+    background: linear-gradient(to right,
+        #0e0e0e 0%,      #0e0e0e 7.5%,
+        #2a2a2a 7.5%,    #2a2a2a 18.75%,
+        #484848 18.75%,  #484848 34%,
+        #686868 34%,     #686868 66%,
+        #484848 66%,     #484848 81.25%,
+        #2a2a2a 81.25%,  #2a2a2a 92.5%,
+        #0e0e0e 92.5%,   #0e0e0e 100%
+    );
+}
+
+/* Bright rim at the cut opening */
+.pipe-shaft::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 8px;
+    background: linear-gradient(to right,
+        #0e0e0e 0%,    #0e0e0e 7.5%,
+        #404040 7.5%,  #404040 18.75%,
+        #707070 18.75%,#707070 34%,
+        #909090 34%,   #909090 66%,
+        #707070 66%,   #707070 81.25%,
+        #404040 81.25%,#404040 92.5%,
+        #0e0e0e 92.5%, #0e0e0e 100%
+    );
+    border-bottom: 1px solid rgba(255,255,255,0.15);
+}
+
 /* ── Zone sign ── */
 
 .zone-sign {
@@ -299,8 +464,8 @@ body {
     background: rgba(22, 17, 8, 0.8);
     border: 1px solid rgba(200, 155, 45, 0.35);
     border-radius: 3px;
-    color: rgba(200, 155, 45, 0.6);
-    font-size: 9px;
+    color: rgba(236, 174, 15, 0.781);
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.12em;
     text-transform: uppercase;
@@ -336,6 +501,105 @@ body {
     align-items: center;
     justify-content: center;
     /* left and top controlled by JS */
+}
+
+/* ── Project preview panel ── */
+
+.project-preview {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 155px;
+    background: #0c0c0c;
+    border: 1.5px solid #333;
+    border-radius: 3px;
+    z-index: 4;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s;
+    overflow: hidden;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.5), 0 4px 16px rgba(0,0,0,0.6);
+}
+
+.project-preview.visible {
+    opacity: 1;
+}
+
+.preview-header {
+    padding: 6px 8px 5px;
+    border-bottom: 1px solid #1e1e1e;
+    background: #111;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.preview-type {
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #555;
+}
+
+.preview-type[data-type="triangle"] { color: #4a8aaa; }
+.preview-type[data-type="square"]   { color: #8a6b3b; }
+
+.preview-name {
+    color: #c8cdd2;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.preview-screen {
+    height: 96px;
+    position: relative;
+    background: #060606;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Subtle scanline overlay */
+.preview-screen::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+        to bottom,
+        transparent 0px,
+        transparent 3px,
+        rgba(0,0,0,0.12) 3px,
+        rgba(0,0,0,0.12) 4px
+    );
+    pointer-events: none;
+    z-index: 1;
+}
+
+.preview-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+}
+
+.preview-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    color: #1a3a1a;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    text-shadow: 0 0 8px #0f4a0f;
 }
 
 .crate-label {
