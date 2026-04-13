@@ -15,6 +15,15 @@ body {
     font-family: sans-serif;
 }
 
+.under-development {
+    color: #ff6b6b;
+    font-size: 48px;
+    font-weight: bold;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+}
+
 .hint {
     color: #484848;
     font-size: 13px;
@@ -43,15 +52,9 @@ body {
     z-index: 1;
 }
 
-/* floor */
+/* floor drawn on canvas instead — scene::after removed */
 .scene::after {
-    content: '';
-    position: absolute;
-    inset: auto 0 0 0;
-    height: 50px;
-    background: #242424;
-    border-top: 2px solid #363636;
-    z-index: 0;
+    display: none;
 }
 
 /* ── Rope canvas ── */
@@ -123,10 +126,10 @@ body {
 
 .claw {
     position: absolute;
-    transform: translate(-50%, 0);
+    transform-origin: top center;
     width: 34px;
     z-index: 5;
-    /* left and top controlled by JS */
+    /* left offset by half-width in JS so top-center lands on rope tip */
 }
 
 .claw-head {
@@ -154,12 +157,22 @@ body {
 .finger.left {
     left: 3px;
     transform-origin: top center;
-    transform: rotate(-18deg);
+    transform: rotate(10deg);
+    transition: transform 0.12s ease;
 }
 
 .finger.right {
     right: 3px;
     transform-origin: top center;
+    transform: rotate(-10deg);
+    transition: transform 0.12s ease;
+}
+
+.claw.holding .finger.left {
+    transform: rotate(-18deg);
+}
+
+.claw.holding .finger.right {
     transform: rotate(18deg);
 }
 

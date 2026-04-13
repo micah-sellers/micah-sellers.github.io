@@ -1,7 +1,5 @@
 // ── Constants ──────────────────────────────────────────────────────────────
-//og dimensions -> const SCENE_W    = 720;
-//const SCENE_H    = 480;
-const SCENE_W    = Math.min(window.innerWidth, 1300);
+const SCENE_W    = Math.min(window.innerWidth, 900);
 const SCENE_H    = 500;
 
 const MIN_X      = 50;
@@ -10,55 +8,56 @@ const ROPE_MIN   = 10;
 const X_SPEED    = 4;
 const ROPE_SPEED = 3;
 
-const N          = 8;       // rope nodes
-const GRAVITY    = 0.5;     // px / frame²
-const DAMPING    = 0.98;
-const ITERS      = 5;       // constraint solving iterations per frame
-const HOLD_WEIGHT = 0.4;    // extra gravity on tip node when holding a crate
+const N           = 8;
+const GRAVITY     = 0.7;
+const DAMPING     = 0.95;
+const ITERS       = 5;
+const HOLD_WEIGHT = 0.9;
 
 const CRATE_W    = 64;
 const CRATE_H    = 64;
 const CRATE_GAP  = 14;
-const FLOOR_Y    = SCENE_H - 50;                           // 750 — top of floor surface
-const CRATE_REST = FLOOR_Y - CRATE_H;                     // 686 — crate top when at rest
-const CRATE_X0   = (SCENE_W - (4 * CRATE_W + 3 * CRATE_GAP)) / 2; // 268
+const FLOOR_Y    = SCENE_H - 50;
+const CRATE_REST = FLOOR_Y - CRATE_H;
+const CRATE_X0   = (SCENE_W - (4 * CRATE_W + 3 * CRATE_GAP)) / 2;
 
-const CLAW_DEPTH = 28;      // px below last rope node to the claw fingertips
-const GRAB_R     = 44;      // grab detection radius in px
+const CLAW_DEPTH = 28;
+const GRAB_R     = 44;
 
-const ZONE_W     = 160;     // drop zone width
-const ZONE_X     = SCENE_W - 50 - ZONE_W;  // drop zone left edge (50px from right)
+const ZONE_W     = 160;
+const ZONE_X     = SCENE_W - ZONE_W;   // hole runs to the right scene edge
+
+const POST_W = 5;
+const POST_H = 70;
 
 // ── DOM ────────────────────────────────────────────────────────────────────
 const trolleyEl  = document.getElementById('trolley');
 const clawEl     = document.getElementById('claw');
 const dropZoneEl = document.getElementById('dropZone');
+dropZoneEl.style.display = 'none';
+
 const canvas     = document.getElementById('ropeCanvas');
 const ctx        = canvas.getContext('2d');
 canvas.width     = SCENE_W;
 canvas.height    = SCENE_H;
 
-// Link CSS dimensions to JS constants
 const sceneEl = document.getElementById('scene');
 sceneEl.style.setProperty('--scene-w', SCENE_W + 'px');
 sceneEl.style.setProperty('--scene-h', SCENE_H + 'px');
 sceneEl.style.setProperty('--zone-x', ZONE_X + 'px');
 sceneEl.style.setProperty('--zone-w', ZONE_W + 'px');
 
-// Get rope anchor point as the bottom-center of trolley
 function getAnchorY() {
     const rect = trolleyEl.getBoundingClientRect();
     const sceneRect = sceneEl.getBoundingClientRect();
     return rect.bottom - sceneRect.top;
 }
 
-// Get maximum rope length (stops 40px above floor)
 function getRopeMax() {
     return FLOOR_Y - 80 - getAnchorY();
 }
 
 // ── Rope nodes ─────────────────────────────────────────────────────────────
-// Each node: { x, y, px, py }  (current position + previous for Verlet velocity)
 let trolleyX   = SCENE_W / 2;
 let ropeLength = 80;
 
@@ -72,17 +71,59 @@ const nodes = [];
     }
 }());
 
+// ── Matter.js Physics ──────────────────────────────────────────────────────
+const { Engine, World, Bodies, Body } = Matter;
+const physEngine = Engine.create({ gravity: { x: 0, y: 1.8, scale: 0.001 } });
+
+const leftFloorW  = ZONE_X + 100;
+const rightFloorW = SCENE_W - (ZONE_X + ZONE_W) + 100;
+
+World.add(physEngine.world, [
+    // Only a left floor segment — hole runs all the way to the right scene wall
+    Bodies.rectangle(
+        ZONE_X - leftFloorW / 2,
+        FLOOR_Y + 25,
+        leftFloorW, 50,
+        { isStatic: true, friction: 0.05, label: 'floor' }
+    ),
+    Bodies.rectangle(-25,          SCENE_H / 2, 50, SCENE_H * 2, { isStatic: true, label: 'wall' }),
+    Bodies.rectangle(SCENE_W + 25, SCENE_H / 2, 50, SCENE_H * 2, { isStatic: true, label: 'wall' }),
+    // Railing post — left edge of the hole
+    Bodies.rectangle(
+        ZONE_X - POST_W / 2,
+        FLOOR_Y - POST_H / 2,
+        POST_W, POST_H,
+        { isStatic: true, label: 'railPost' }
+    ),
+]);
+
 // ── Crate state ────────────────────────────────────────────────────────────
 const crateEls    = [...document.querySelectorAll('.crate')];
 const crateStates = crateEls.map((el, i) => {
+    el.style.display = 'none';
+
     const x = CRATE_X0 + i * (CRATE_W + CRATE_GAP);
     const y = CRATE_REST;
-    el.style.left = x + 'px';
-    el.style.top  = y + 'px';
-    return { el, x, y, vx: 0, vy: 0, falling: false, page: el.dataset.page };
+
+    const body = Bodies.rectangle(
+        x + CRATE_W / 2,
+        y + CRATE_H / 2,
+        CRATE_W, CRATE_H,
+        { restitution: 0.25, friction: 0.45, frictionStatic: 0.65, label: 'crate' }
+    );
+    World.add(physEngine.world, body);
+
+    const labelEl = el.querySelector('.crate-label');
+    return {
+        body,
+        gone:  false,
+        page:  el.dataset.page,
+        label: labelEl ? labelEl.textContent.trim().toUpperCase() : '',
+    };
 });
 
-let heldIdx = -1;   // index of the currently held crate, -1 = none
+let heldIdx    = -1;
+let clawAngle  = 0;
 
 // ── Input ──────────────────────────────────────────────────────────────────
 const keys = new Set();
@@ -96,145 +137,204 @@ document.addEventListener('keyup', e => keys.delete(e.key));
 
 function onSpace() {
     if (heldIdx === -1) {
-        // Attempt to grab the nearest reachable crate
         const tipX = nodes[N - 1].x;
         const tipY = nodes[N - 1].y + CLAW_DEPTH;
         let best = -1, bestDist = GRAB_R;
         for (let i = 0; i < crateStates.length; i++) {
             const c = crateStates[i];
-            if (c.falling) continue;
-            const cx   = c.x + CRATE_W / 2;
-            const cy   = c.y + 8;           // test against upper region of crate
+            if (c.gone) continue;
+            const cx   = c.body.position.x;
+            const cy   = c.body.position.y - CRATE_H / 2 + 8;
             const dist = Math.hypot(tipX - cx, tipY - cy);
             if (dist < bestDist) { bestDist = dist; best = i; }
         }
-        if (best !== -1) heldIdx = best;
+        if (best !== -1) {
+            heldIdx = best;
+            Body.setAngle(crateStates[best].body, 0);
+            Body.setAngularVelocity(crateStates[best].body, 0);
+            clawEl.classList.add('holding');
+        }
     } else {
-        // Release — inherit current rope-tip velocity
         const last = nodes[N - 1];
         const c    = crateStates[heldIdx];
-        c.vx      = last.x - last.px;
-        c.vy      = last.y - last.py;
-        c.falling = true;
-        heldIdx   = -1;
+        Body.setVelocity(c.body, { x: last.x - last.px, y: last.y - last.py });
+        heldIdx = -1;
+        clawEl.classList.remove('holding');
     }
 }
 
-// ── Physics ────────────────────────────────────────────────────────────────
+// ── Rope physics (Verlet) ──────────────────────────────────────────────────
 function updateRope() {
     const anchorY = getAnchorY();
-    const segLen = ropeLength / (N - 1);
+    const segLen  = ropeLength / (N - 1);
 
-    // Verlet integration for free nodes 1..N-1
     for (let i = 1; i < N; i++) {
         const n  = nodes[i];
         const ay = GRAVITY + (i === N - 1 && heldIdx !== -1 ? HOLD_WEIGHT : 0);
         const vx = (n.x - n.px) * DAMPING;
         const vy = (n.y - n.py) * DAMPING;
-        n.px = n.x;
-        n.py = n.y;
-        n.x += vx;
-        n.y += vy + ay;
+        n.px = n.x;  n.py = n.y;
+        n.x += vx;   n.y += vy + ay;
     }
 
-    // Iterative constraint solving (maintains segment lengths)
     for (let iter = 0; iter < ITERS; iter++) {
-        // Re-pin anchor to trolley bottom center
         nodes[0].x = trolleyX;
         nodes[0].y = anchorY;
-
         for (let i = 0; i < N - 1; i++) {
-            const a  = nodes[i];
-            const b  = nodes[i + 1];
-            const dx = b.x - a.x;
-            const dy = b.y - a.y;
+            const a = nodes[i], b = nodes[i + 1];
+            const dx = b.x - a.x, dy = b.y - a.y;
             const d  = Math.sqrt(dx * dx + dy * dy);
             if (d < 0.001) continue;
             const diff = (d - segLen) / d;
-            const cx   = dx * diff * 0.5;
-            const cy   = dy * diff * 0.5;
-            if (i !== 0) { a.x += cx; a.y += cy; }  // anchor stays fixed
-            b.x -= cx;
-            b.y -= cy;
+            const cx = dx * diff * 0.5, cy = dy * diff * 0.5;
+            if (i !== 0) { a.x += cx; a.y += cy; }
+            b.x -= cx; b.y -= cy;
         }
     }
-
-    // Final anchor pin (constraints may have drifted it slightly)
     nodes[0].x = trolleyX;
     nodes[0].y = anchorY;
 }
 
-// Called when a falling crate comes to rest — checks for zone landing
-function landCrate(c) {
-    const cx = c.x + CRATE_W / 2;
-    if (cx >= ZONE_X && cx <= ZONE_X + ZONE_W) {
-        dropZoneEl.classList.add('active');
-        setTimeout(() => { window.location.href = c.page; }, 0); // change the second parameter to adjust delay in ms before navigation
-    }
-}
-
+// ── Crate physics ──────────────────────────────────────────────────────────
 function updateCrates() {
     const last = nodes[N - 1];
 
-    // Held crate tracks the rope tip
     if (heldIdx !== -1) {
-        const c = crateStates[heldIdx];
-        c.x = last.x - CRATE_W / 2;
-        c.y = last.y + 14;      // top of crate just inside the claw fingers
-        c.el.style.left = c.x + 'px';
-        c.el.style.top  = c.y + 'px';
+        const c  = crateStates[heldIdx];
+        const offset = 14 + CRATE_H / 2;
+        const tx = last.x + Math.sin(clawAngle) * offset;
+        const ty = last.y + Math.cos(clawAngle) * offset;
+        Body.setPosition(c.body, { x: tx, y: ty });
+        Body.setVelocity(c.body, { x: last.x - last.px, y: last.y - last.py });
+        Body.setAngle(c.body, clawAngle);
+        Body.setAngularVelocity(c.body, 0);
     }
 
-    // Highlight drop zone when a held crate is positioned over it
+    Engine.update(physEngine, 1000 / 60);
+
     if (heldIdx !== -1) {
-        const cx = crateStates[heldIdx].x + CRATE_W / 2;
-        dropZoneEl.classList.toggle('active', cx >= ZONE_X && cx <= ZONE_X + ZONE_W);
-    } else {
-        dropZoneEl.classList.remove('active');
+        const c  = crateStates[heldIdx];
+        const offset = 14 + CRATE_H / 2;
+        Body.setPosition(c.body, {
+            x: last.x + Math.sin(clawAngle) * offset,
+            y: last.y + Math.cos(clawAngle) * offset,
+        });
+        Body.setAngle(c.body, clawAngle);
     }
 
-    // Falling crates under gravity
-    for (const c of crateStates) {
-        if (!c.falling) continue;
-        c.vy += GRAVITY;
-        c.x  += c.vx;
-        c.y  += c.vy;
+    for (let i = 0; i < crateStates.length; i++) {
+        if (i === heldIdx) continue;
+        const c  = crateStates[i];
+        if (c.gone) continue;
 
-        // Floor collision
-        if (c.y >= CRATE_REST) {
-            c.y  = CRATE_REST;
-            c.vy = 0;
-            c.vx *= 0.55;               // sliding friction
-            if (Math.abs(c.vx) < 0.4) {
-                c.vx = 0;
-                c.falling = false;
-                landCrate(c);
-            }
+        const cx = c.body.position.x;
+        const cy = c.body.position.y;
+
+        if (cy > FLOOR_Y + 5 && cx > ZONE_X && cx < ZONE_X + ZONE_W) {
+            c.gone = true;
+            World.remove(physEngine.world, c.body);
+            setTimeout(() => { window.location.href = c.page; }, 300);
         }
-
-        // Scene wall clamp
-        if (c.x < 0)                  { c.x = 0;                  c.vx = 0; }
-        if (c.x > SCENE_W - CRATE_W)  { c.x = SCENE_W - CRATE_W; c.vx = 0; }
-
-        c.el.style.left = c.x + 'px';
-        c.el.style.top  = c.y + 'px';
     }
 }
 
 // ── Rendering ──────────────────────────────────────────────────────────────
+function drawCrates() {
+    for (let i = 0; i < crateStates.length; i++) {
+        const c = crateStates[i];
+        if (c.gone) continue;
+
+        const { x: bx, y: by } = c.body.position;
+        const angle = c.body.angle;
+        const held  = (i === heldIdx);
+
+        ctx.save();
+        ctx.translate(bx, by);
+        ctx.rotate(angle);
+
+        ctx.shadowColor   = 'rgba(0,0,0,0.55)';
+        ctx.shadowBlur    = 8;
+        ctx.shadowOffsetX = 2;
+        ctx.shadowOffsetY = 4;
+
+        ctx.fillStyle = held ? '#c48b4a' : '#9b6b3b';
+        ctx.fillRect(-CRATE_W / 2, -CRATE_H / 2, CRATE_W, CRATE_H);
+
+        ctx.shadowColor = 'transparent';
+
+        ctx.strokeStyle = '#6b4825';
+        ctx.lineWidth   = 3;
+        ctx.strokeRect(-CRATE_W / 2, -CRATE_H / 2, CRATE_W, CRATE_H);
+
+        ctx.strokeStyle = 'rgba(0,0,0,0.28)';
+        ctx.lineWidth   = 2.5;
+        ctx.lineCap     = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-CRATE_W / 2 + 5,  -CRATE_H / 2 + 5);
+        ctx.lineTo( CRATE_W / 2 - 5,   CRATE_H / 2 - 5);
+        ctx.moveTo( CRATE_W / 2 - 5,  -CRATE_H / 2 + 5);
+        ctx.lineTo(-CRATE_W / 2 + 5,   CRATE_H / 2 - 5);
+        ctx.stroke();
+
+        ctx.fillStyle    = 'rgba(255,235,200,0.9)';
+        ctx.font         = 'bold 9px sans-serif';
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(c.label, 0, 0);
+
+        ctx.restore();
+    }
+}
+
+function drawFloor() {
+    ctx.fillStyle = '#242424';
+    ctx.fillRect(0, FLOOR_Y, ZONE_X, SCENE_H - FLOOR_Y);
+    ctx.fillStyle = '#363636';
+    ctx.fillRect(0, FLOOR_Y, ZONE_X, 2);
+}
+
+function drawRailing() {
+    const postH  = POST_H;
+    const postW  = POST_W;
+    const railH  = 4;
+    const lx     = ZONE_X;          // left edge of hole / post position
+    const topY   = FLOOR_Y - postH;
+    const midY   = FLOOR_Y - Math.round(postH * 0.52);
+    const railEnd = SCENE_W;        // rails connect to right scene wall
+
+    // ── Fill ────────────────────────────────────────────────────────────────
+    ctx.fillStyle = '#4a4a4a';
+
+    // Single post at left edge of hole
+    ctx.fillRect(lx - postW, topY, postW, postH);
+
+    // Top rail spanning inward across the hole to the right wall
+    ctx.fillRect(lx, topY, railEnd - lx, railH);
+
+    // Mid rail
+    ctx.fillRect(lx, midY, railEnd - lx, railH);
+
+    // ── Top-face highlights ─────────────────────────────────────────────────
+    ctx.fillStyle = '#646464';
+    ctx.fillRect(lx - postW, topY, postW + (railEnd - lx), 1);  // post top + top rail
+    ctx.fillRect(lx,         midY, railEnd - lx,            1);  // mid rail
+
+    // ── Post cap ────────────────────────────────────────────────────────────
+    ctx.fillStyle = '#585858';
+    ctx.fillRect(lx - postW - 2, topY - 5, postW + 4, 5);
+    ctx.fillStyle = '#707070';
+    ctx.fillRect(lx - postW - 2, topY - 5, postW + 4, 1);
+}
+
 function drawRope() {
-    ctx.clearRect(0, 0, SCENE_W, SCENE_H);
     ctx.beginPath();
     ctx.moveTo(nodes[0].x, nodes[0].y);
-
-    // Smooth curve through intermediate nodes via quadratic bezier midpoints
     for (let i = 1; i <= N - 2; i++) {
         const mx = (nodes[i].x + nodes[i + 1].x) / 2;
         const my = (nodes[i].y + nodes[i + 1].y) / 2;
         ctx.quadraticCurveTo(nodes[i].x, nodes[i].y, mx, my);
     }
     ctx.lineTo(nodes[N - 1].x, nodes[N - 1].y);
-
     ctx.strokeStyle = '#c0c0c0';
     ctx.lineWidth   = 3;
     ctx.lineCap     = 'round';
@@ -243,22 +343,27 @@ function drawRope() {
 
 // ── Main loop ──────────────────────────────────────────────────────────────
 function tick() {
-    // Movement input
-    if (keys.has('ArrowLeft'))  trolleyX   = Math.max(MIN_X,         trolleyX   - X_SPEED);
-    if (keys.has('ArrowRight')) trolleyX   = Math.min(MAX_X,         trolleyX   + X_SPEED);
-    if (keys.has('ArrowUp'))    ropeLength = Math.max(ROPE_MIN,      ropeLength - ROPE_SPEED);
-    if (keys.has('ArrowDown'))  ropeLength = Math.min(getRopeMax(),  ropeLength + ROPE_SPEED);
+    if (keys.has('ArrowLeft'))  trolleyX   = Math.max(MIN_X,        trolleyX   - X_SPEED);
+    if (keys.has('ArrowRight')) trolleyX   = Math.min(MAX_X,        trolleyX   + X_SPEED);
+    if (keys.has('ArrowUp'))    ropeLength = Math.max(ROPE_MIN,     ropeLength - ROPE_SPEED);
+    if (keys.has('ArrowDown'))  ropeLength = Math.min(getRopeMax(), ropeLength + ROPE_SPEED);
 
-    // Physics
     updateRope();
+    clawAngle = -Math.atan2(nodes[N-1].x - nodes[N-2].x, nodes[N-1].y - nodes[N-2].y);
     updateCrates();
 
-    // Render
+    ctx.clearRect(0, 0, SCENE_W, SCENE_H);
+    drawFloor();
+    drawCrates();
+    drawRailing();
     drawRope();
+
+    const CLAW_HALF_W = 17; // half of 34px claw width
     const last = nodes[N - 1];
-    clawEl.style.left    = last.x + 'px';
-    clawEl.style.top     = last.y + 'px';
-    trolleyEl.style.left = trolleyX + 'px';
+    clawEl.style.left      = (last.x - CLAW_HALF_W) + 'px';
+    clawEl.style.top       = last.y + 'px';
+    clawEl.style.transform = `rotate(${clawAngle}rad)`;
+    trolleyEl.style.left   = trolleyX + 'px';
 
     requestAnimationFrame(tick);
 }
