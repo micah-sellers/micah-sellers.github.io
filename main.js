@@ -1,16 +1,23 @@
 // ── Project config ─────────────────────────────────────────────────────────
-// Edit this list to add, remove, or rename project boxes.
-//   type: 'square'   → school project   (brown crate)
-//   type: 'triangle' → personal project (blue prism)
-//   image: path to a preview screenshot, or null for none
+// Add, remove, or reorder entries here — everything else updates automatically.
+//
+//   label : text shown on the box
+//   page  : file to navigate to when the box is dropped in the hole
+//   type  : 'square'   → school / work project  (brown crate with X-brace)
+//           'triangle' → personal project        (blue prism)
+//   image : preview screenshot path, or null
+//
 const PROJECTS = [
-    // ── School projects ──────────────────────────────────────────────────────
+    // ── School / work projects  (square boxes) ───────────────────────────────
     { label: 'About',    page: 'about.html',    type: 'square',   image: null },
     { label: 'Projects', page: 'projects.html', type: 'square',   image: null },
     { label: 'Contact',  page: 'contact.html',  type: 'square',   image: null },
     { label: 'Resume',   page: 'resume.html',   type: 'square',   image: null },
-    // ── Personal projects ────────────────────────────────────────────────────
-    // { label: 'My App', page: 'app.html', type: 'triangle', image: 'img/app-thumb.png' },
+
+    // ── Personal projects  (triangle boxes) ─────────────────────────────────
+    // To add one: copy a line, uncomment it, and fill in your details.
+    { label: 'My Project', page: 'projects.html', type: 'triangle', image: null },
+    // { label: 'My App',   page: 'app.html',   type: 'triangle', image: 'img/app-thumb.png' },
 ];
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -32,7 +39,10 @@ const HOLD_WEIGHT = 0.9;
 const CRATE_W    = 64;
 const CRATE_H    = 64;
 const CRATE_GAP  = 14;
-const TRIANGLE_R = 36;   // circumradius for triangle boxes
+const TRIANGLE_R      = 36;          // circumradius for triangle boxes
+// Matter.js Bodies.polygon(n=3) places vertex 0 at angle theta/2 = π/3.
+// All triangle path / grab calculations must use this same offset.
+const TRIANGLE_OFFSET = Math.PI / 3;
 const FLOOR_Y    = SCENE_H - 50;
 const CRATE_REST = FLOOR_Y - CRATE_H;
 const CRATE_X0   = (SCENE_W - (PROJECTS.length * CRATE_W + (PROJECTS.length - 1) * CRATE_GAP)) / 2;
@@ -203,10 +213,21 @@ function onSpace() {
         for (let i = 0; i < crateStates.length; i++) {
             const c = crateStates[i];
             if (c.gone || c.pipeFalling) continue;
-            const halfH = c.type === 'triangle' ? TRIANGLE_R : CRATE_H / 2;
-            const cx    = c.body.position.x;
-            const cy    = c.body.position.y - halfH + 8;
-            const dist  = Math.hypot(tipX - cx, tipY - cy);
+            let grabCx, grabCy;
+            if (c.type === 'triangle') {
+                // Grab from the topmost (apex) vertex, accounting for current rotation
+                grabCy = Infinity;
+                for (let v = 0; v < 3; v++) {
+                    const a  = c.body.angle + v * (2 * Math.PI / 3) + TRIANGLE_OFFSET;
+                    const vx = c.body.position.x + TRIANGLE_R * Math.cos(a);
+                    const vy = c.body.position.y + TRIANGLE_R * Math.sin(a);
+                    if (vy < grabCy) { grabCy = vy; grabCx = vx; }
+                }
+            } else {
+                grabCx = c.body.position.x;
+                grabCy = c.body.position.y - CRATE_H / 2 + 8;
+            }
+            const dist = Math.hypot(tipX - grabCx, tipY - grabCy);
             if (dist < bestDist) { bestDist = dist; best = i; }
         }
         if (best !== -1) {
@@ -270,7 +291,9 @@ function updateCrates() {
         const ty = last.y + Math.cos(clawAngle) * offset;
         Body.setPosition(c.body, { x: tx, y: ty });
         Body.setVelocity(c.body, { x: last.x - last.px, y: last.y - last.py });
-        Body.setAngle(c.body, clawAngle);
+        // Triangles hang apex-up: offset body angle by -π/6 so vertex v2 (at 5π/3
+        // body-relative) aligns with the "toward rope" direction at any clawAngle.
+        Body.setAngle(c.body, c.type === 'triangle' ? clawAngle - Math.PI / 6 : clawAngle);
         Body.setAngularVelocity(c.body, 0);
     }
 
@@ -284,7 +307,7 @@ function updateCrates() {
             x: last.x - Math.sin(clawAngle) * offset,
             y: last.y + Math.cos(clawAngle) * offset,
         });
-        Body.setAngle(c.body, clawAngle);
+        Body.setAngle(c.body, c.type === 'triangle' ? clawAngle - Math.PI / 6 : clawAngle);
     }
 
     for (let i = 0; i < crateStates.length; i++) {
@@ -322,17 +345,113 @@ function updateCrates() {
 
 // ── Rendering ──────────────────────────────────────────────────────────────
 
-// Draw a triangle path matching Matter.js polygon(n=3) vertex layout
+// Draw a triangle path matching Matter.js Bodies.polygon(n=3) vertex layout.
+// Uses TRIANGLE_OFFSET = π/3 defined in the constants block above.
 function pathTriangle(r) {
     ctx.beginPath();
     for (let v = 0; v < 3; v++) {
-        const a  = v * (2 * Math.PI / 3);
+        const a  = v * (2 * Math.PI / 3) + TRIANGLE_OFFSET;
         const vx = Math.cos(a) * r;
         const vy = Math.sin(a) * r;
         if (v === 0) ctx.moveTo(vx, vy); else ctx.lineTo(vx, vy);
     }
     ctx.closePath();
 }
+
+// ── Per-type draw functions ────────────────────────────────────────────────
+// To add a new shape type:
+//   1. Add a drawBox_<type>(held) function here.
+//   2. Add the type string to the dispatch table in drawCrates().
+//   3. Add entries to PROJECTS with that type string.
+
+function drawBox_triangle(held, drawAngle) {
+    // Blue prism — personal project
+    const fill   = held ? '#6db8d4' : '#2d7aaa';
+    const stroke = '#0d3d5e';
+
+    // Outer triangle
+    pathTriangle(TRIANGLE_R);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth   = 3;
+    ctx.stroke();
+
+    // Subtle inner triangle detail
+    pathTriangle(TRIANGLE_R * 0.5);
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth   = 1.5;
+    ctx.stroke();
+
+    // Label — horizontal at the centroid.
+    // Counter-rotate by drawAngle so the text is always screen-upright.
+    ctx.save();
+    ctx.rotate(-drawAngle);
+    let fs = 13;
+    ctx.font = `bold ${fs}px sans-serif`;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor  = 'rgba(0,0,0,0.9)';
+    ctx.shadowBlur   = 4;
+    ctx.fillStyle    = 'rgba(210,240,255,1.0)';
+    ctx.fillText(this.label, 0, 0);
+    ctx.shadowColor  = 'transparent';
+    ctx.restore();
+}
+
+function drawBox_square(held, drawAngle) {
+    // Brown crate — school / work project
+    const fill   = held ? '#c48b4a' : '#8a5c2e';
+    const stroke = '#5a3010';
+    const hw = CRATE_W / 2, hh = CRATE_H / 2;
+
+    ctx.fillStyle = fill;
+    ctx.fillRect(-hw, -hh, CRATE_W, CRATE_H);
+    ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth   = 3;
+    ctx.strokeRect(-hw, -hh, CRATE_W, CRATE_H);
+
+    // Wood-plank horizontal lines
+    ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+    ctx.lineWidth   = 1.5;
+    ctx.lineCap     = 'butt';
+    ctx.beginPath();
+    ctx.moveTo(-hw + 3, -hh + CRATE_H / 3);
+    ctx.lineTo( hw - 3, -hh + CRATE_H / 3);
+    ctx.moveTo(-hw + 3,  hh - CRATE_H / 3);
+    ctx.lineTo( hw - 3,  hh - CRATE_H / 3);
+    ctx.stroke();
+
+    // X-brace
+    ctx.strokeStyle = 'rgba(0,0,0,0.28)';
+    ctx.lineWidth   = 2;
+    ctx.lineCap     = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-hw + 5, -hh + 5); ctx.lineTo( hw - 5,  hh - 5);
+    ctx.moveTo( hw - 5, -hh + 5); ctx.lineTo(-hw + 5,  hh - 5);
+    ctx.stroke();
+
+    // Label — horizontal at the centroid
+    ctx.save();
+    ctx.rotate(-drawAngle);
+    ctx.font         = 'bold 13px sans-serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor  = 'rgba(0,0,0,0.9)';
+    ctx.shadowBlur   = 4;
+    ctx.fillStyle    = 'rgba(255,240,200,1.0)';
+    ctx.fillText(this.label, 0, 0);
+    ctx.shadowColor  = 'transparent';
+    ctx.restore();
+}
+
+// Dispatch table — maps type string → draw function
+const BOX_DRAW = {
+    triangle: drawBox_triangle,
+    square:   drawBox_square,
+};
 
 function drawCrates() {
     for (let i = 0; i < crateStates.length; i++) {
@@ -342,19 +461,24 @@ function drawCrates() {
 
         ctx.save();
 
-        // Position & rotate around the correct pivot
+        // Position & rotate around the correct pivot; track total rotation for label use
+        let drawAngle;
         if (held) {
             const last  = nodes[N - 1];
             const halfH = c.type === 'triangle' ? TRIANGLE_R : CRATE_H / 2;
             ctx.translate(last.x, last.y);
             ctx.rotate(clawAngle);
             ctx.translate(0, CLAW_DEPTH + halfH);
+            if (c.type === 'triangle') ctx.rotate(-Math.PI / 6);
+            drawAngle = c.type === 'triangle' ? clawAngle - Math.PI / 6 : clawAngle;
         } else if (c.pipeFalling) {
             ctx.translate(c.pipeX, c.pipeY);
             ctx.rotate(c.pipeAngle);
+            drawAngle = c.pipeAngle;
         } else {
             ctx.translate(c.body.position.x, c.body.position.y);
             ctx.rotate(c.body.angle);
+            drawAngle = c.body.angle;
         }
 
         // Drop shadow
@@ -363,58 +487,9 @@ function drawCrates() {
         ctx.shadowOffsetX = 2;
         ctx.shadowOffsetY = 4;
 
-        if (c.type === 'triangle') {
-            // ── Triangle (personal project) ──────────────────────────────────
-            pathTriangle(TRIANGLE_R);
-            ctx.fillStyle = held ? '#5a9ab0' : '#3a6b8a';
-            ctx.fill();
-            ctx.shadowColor = 'transparent';
-            ctx.strokeStyle = '#1a3a54';
-            ctx.lineWidth   = 3;
-            ctx.stroke();
-            // Inner smaller triangle as detail
-            pathTriangle(TRIANGLE_R * 0.48);
-            ctx.strokeStyle = 'rgba(0,0,0,0.22)';
-            ctx.lineWidth   = 2;
-            ctx.stroke();
-
-        } else {
-            // ── Square (school project) ───────────────────────────────────────
-            ctx.fillStyle = held ? '#c48b4a' : '#9b6b3b';
-            ctx.fillRect(-CRATE_W / 2, -CRATE_H / 2, CRATE_W, CRATE_H);
-            ctx.shadowColor = 'transparent';
-            ctx.strokeStyle = '#6b4825';
-            ctx.lineWidth   = 3;
-            ctx.strokeRect(-CRATE_W / 2, -CRATE_H / 2, CRATE_W, CRATE_H);
-            // X-brace detail
-            ctx.strokeStyle = 'rgba(0,0,0,0.28)';
-            ctx.lineWidth   = 2.5;
-            ctx.lineCap     = 'round';
-            ctx.beginPath();
-            ctx.moveTo(-CRATE_W / 2 + 5,  -CRATE_H / 2 + 5);
-            ctx.lineTo( CRATE_W / 2 - 5,   CRATE_H / 2 - 5);
-            ctx.moveTo( CRATE_W / 2 - 5,  -CRATE_H / 2 + 5);
-            ctx.lineTo(-CRATE_W / 2 + 5,   CRATE_H / 2 - 5);
-            ctx.stroke();
-        }
-
-        // ── Label ──────────────────────────────────────────────────────────────
-        ctx.textAlign    = 'center';
-        ctx.textBaseline = 'middle';
-        const maxW   = c.type === 'triangle' ? TRIANGLE_R * 1.1 : CRATE_W - 12;
-        let fontSize = 13;
-        ctx.font = `bold ${fontSize}px sans-serif`;
-        while (ctx.measureText(c.label).width > maxW && fontSize > 7) {
-            fontSize--;
-            ctx.font = `bold ${fontSize}px sans-serif`;
-        }
-        ctx.shadowColor = 'rgba(0,0,0,0.8)';
-        ctx.shadowBlur  = 4;
-        ctx.fillStyle   = c.type === 'triangle'
-            ? 'rgba(200,235,255,1.0)'
-            : 'rgba(255,240,210,1.0)';
-        ctx.fillText(c.label, 0, 0);
-        ctx.shadowColor = 'transparent';
+        // Call the correct draw function for this box type
+        const drawFn = BOX_DRAW[c.type] || BOX_DRAW.square;
+        drawFn.call(c, held, drawAngle);
 
         ctx.restore();
     }
@@ -425,6 +500,47 @@ function drawFloor() {
     ctx.fillRect(0, FLOOR_Y, ZONE_X, SCENE_H - FLOOR_Y);
     ctx.fillStyle = '#363636';
     ctx.fillRect(0, FLOOR_Y, ZONE_X, 2);
+
+    // ── Legend: drawn only when both types exist in PROJECTS ────────────────
+    const types = [...new Set(PROJECTS.map(p => p.type))];
+    if (types.length < 2) return;
+    const legendX = 8;
+    let legendY   = FLOOR_Y + 14;
+    const labels  = { square: 'School / Work', triangle: 'Personal' };
+    ctx.save();
+    ctx.font         = 'bold 9px sans-serif';
+    ctx.textBaseline = 'middle';
+    for (const t of ['square', 'triangle']) {
+        if (!types.includes(t)) continue;
+        ctx.save();
+        ctx.translate(legendX + 8, legendY);
+        if (t === 'square') {
+            ctx.fillStyle   = '#8a5c2e';
+            ctx.fillRect(-6, -6, 12, 12);
+            ctx.strokeStyle = '#5a3010';
+            ctx.lineWidth   = 1.5;
+            ctx.strokeRect(-6, -6, 12, 12);
+        } else {
+            ctx.beginPath();
+            for (let v = 0; v < 3; v++) {
+                const a = v * (2 * Math.PI / 3) + TRIANGLE_OFFSET;
+                const vx = Math.cos(a) * 8, vy = Math.sin(a) * 8;
+                if (v === 0) ctx.moveTo(vx, vy); else ctx.lineTo(vx, vy);
+            }
+            ctx.closePath();
+            ctx.fillStyle   = '#2d7aaa';
+            ctx.fill();
+            ctx.strokeStyle = '#0d3d5e';
+            ctx.lineWidth   = 1.5;
+            ctx.stroke();
+        }
+        ctx.restore();
+        ctx.fillStyle  = '#aaa';
+        ctx.textAlign  = 'left';
+        ctx.fillText(labels[t], legendX + 20, legendY);
+        legendY += 18;
+    }
+    ctx.restore();
 }
 
 function drawRailing() {
