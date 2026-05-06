@@ -58,6 +58,7 @@ h1 {
     letter-spacing: 0.12em;
     text-transform: uppercase;
     line-height: 1.15;
+    text-align: center;
 }
 
 h2 {
@@ -82,12 +83,16 @@ p {
     color: #7a8088;
     font-size: 0.95rem;
     max-width: 68ch;
+    text-align: center;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 /* ── Section spacing ── */
 
 .section {
     margin-top: 52px;
+    text-align: center;
 }
 
 /* ── About page ── */

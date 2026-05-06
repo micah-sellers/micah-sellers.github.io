@@ -16,7 +16,7 @@ const PROJECTS = [
 
     // ── Personal projects  (triangle boxes) ─────────────────────────────────
     // To add one: copy a line, uncomment it, and fill in your details.
-    { label: 'My Project', page: 'projects.html', type: 'triangle', image: null },
+    { label: 'MCTR 260', page: 'mctr260.html', type: 'triangle', image: 'img/260_robot/full_robot.png' },
     // { label: 'My App',   page: 'app.html',   type: 'triangle', image: 'img/app-thumb.png' },
 ];
 
@@ -78,6 +78,9 @@ const PIPE_EXTRA = Math.max(200, Math.ceil(window.innerHeight - (sceneRect.top +
 const PIPE_NAV_Y = Math.ceil(window.innerHeight - sceneRect.top) + CRATE_H;
 canvas.height    = SCENE_H + PIPE_EXTRA;
 
+// Tracks the CSS zoom applied to sceneEl for coordinate conversion
+let currentZoom = 1;
+
 // ── Preview panel ──────────────────────────────────────────────────────────
 const previewEl      = document.getElementById('projectPreview');
 const previewNameEl  = document.getElementById('previewName');
@@ -108,7 +111,9 @@ function hidePreview() {
 function getAnchorY() {
     const rect = trolleyEl.getBoundingClientRect();
     const sr   = sceneEl.getBoundingClientRect();
-    return rect.bottom - sr.top;
+    // Divide by currentZoom: getBoundingClientRect returns viewport (zoomed) pixels,
+    // but the rope physics operates in the original 900×500 coordinate space.
+    return (rect.bottom - sr.top) / currentZoom;
 }
 
 function getRopeMax() {
@@ -142,8 +147,11 @@ World.add(physEngine.world, [
     ),
     Bodies.rectangle(-25,          SCENE_H / 2, 50, SCENE_H * 2, { isStatic: true, label: 'wall' }),
     Bodies.rectangle(SCENE_W + 25, SCENE_H / 2, 50, SCENE_H * 2, { isStatic: true, label: 'wall' }),
-    Bodies.rectangle(ZONE_X - POST_W / 2, FLOOR_Y - POST_H / 2, POST_W, POST_H, { isStatic: true, label: 'railPost' }),
-    Bodies.rectangle(SCENE_W - POST_W / 2, FLOOR_Y - POST_H / 2, POST_W, POST_H, { isStatic: true, label: 'railPost' }),
+    // Rail posts — physics bodies are taller (top y=360 vs visual y=380) and slightly
+    // wider than the 5px visual so triangle vertices (max reach y≈382) can never
+    // tip over the top. Right faces stay flush with ZONE_X / SCENE_W respectively.
+    Bodies.rectangle(ZONE_X  - 3, FLOOR_Y - 45, 6, 90, { isStatic: true, label: 'railPost' }),
+    Bodies.rectangle(SCENE_W - 3, FLOOR_Y - 45, 6, 90, { isStatic: true, label: 'railPost' }),
 ]);
 
 // ── Crate state ─────────────────────────────────────────────────────────────
@@ -624,3 +632,23 @@ modeToggleBtn.addEventListener('click', () => {
 });
 
 tick();
+
+// ── Responsive scene scaling ───────────────────────────────────────────────
+// Apply CSS zoom to the scene element so it fits narrow viewports.
+// zoom affects layout dimensions (unlike transform: scale), preventing
+// horizontal overflow. The physics coordinate space stays at 900×500;
+// only getAnchorY() needs to divide by currentZoom to convert back.
+function resizeScene() {
+    const availW = Math.min(SCENE_W, window.innerWidth - 32);
+    const scale  = availW / SCENE_W;
+    if (scale < 0.99) {
+        currentZoom      = scale;
+        sceneEl.style.zoom = String(scale);
+    } else {
+        currentZoom        = 1;
+        sceneEl.style.zoom = '';
+    }
+}
+
+window.addEventListener('resize', resizeScene);
+resizeScene();
