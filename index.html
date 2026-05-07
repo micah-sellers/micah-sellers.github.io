@@ -79,7 +79,8 @@ const bodyPos=BODIES.map(b=>[...b.pos]);
 
 const ATM=[
   null,
-  {r:0.33, col:[200,175,150], str:0.30}, // Mercury  planet r=0.30  (1.10x)
+  null,                                   // Mercury  — no atmosphere
+
   {r:0.60, col:[220,190,110], str:0.90}, // Venus    planet r=0.55  (1.09x)
   {r:0.65, col:[140,205,255], str:0.75}, // Earth    planet r=0.60  (1.08x)
   {r:0.49, col:[205,110, 70], str:0.45}, // Mars     planet r=0.45  (1.09x)
@@ -469,6 +470,23 @@ function frame(now){
             br=diffuse;
           }
           if(hitB.id!==3){const c=hitB.col;cr=Math.floor(c[0]*br);cg=Math.floor(c[1]*br);cb=Math.floor(c[2]*br);}
+        // Great Red Spot — oval storm at ~23°S, co-rotates with bands
+        if(hitB.id===5){
+          const grsA=globT*0.006+6.7; // phase offset places it in a visible position
+          const grsLat=-0.40;         // sin(23.6°S)
+          const cosLat=Math.sqrt(1-grsLat*grsLat);
+          const gcx=Math.sin(grsA)*cosLat,gcz=Math.cos(grsA)*cosLat;
+          const neq=Math.sqrt(nrm[0]*nrm[0]+nrm[2]*nrm[2]);
+          const dLon=Math.acos(clamp((nrm[0]*gcx+nrm[2]*gcz)/Math.max(0.001,neq*cosLat),-1,1));
+          const dLat=nrm[1]-grsLat;
+          const gd=(dLon/0.22)**2+(dLat/0.10)**2; // ellipse: 2:1 lon:lat ratio
+          if(gd<1.0){
+            const t=clamp(1-gd,0,1)*0.80;
+            cr=Math.floor(lerp(cr,Math.floor(210*br),t));
+            cg=Math.floor(lerp(cg,Math.floor(72*br),t));
+            cb=Math.floor(lerp(cb,Math.floor(38*br),t));
+          }
+        }
         }
         const ri=Math.floor(br*(RAMP.length-1)),base=RAMP[ri];
         const h=fhash(cx,cy,hitB.id),cs=hitB.cs;
