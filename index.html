@@ -81,7 +81,7 @@ const ATM=[
   null,
   {r:0.33, col:[200,175,150], str:0.30}, // Mercury  planet r=0.30  (1.10x)
   {r:0.60, col:[220,190,110], str:0.90}, // Venus    planet r=0.55  (1.09x)
-  {r:0.65, col:[ 60,130,255], str:0.75}, // Earth    planet r=0.60  (1.08x)
+  {r:0.65, col:[140,205,255], str:0.75}, // Earth    planet r=0.60  (1.08x)
   {r:0.49, col:[205,110, 70], str:0.45}, // Mars     planet r=0.45  (1.09x)
   {r:2.06, col:[195,165,125], str:0.80}, // Jupiter  planet r=1.90  (1.08x)
   {r:1.62, col:[205,185,145], str:0.75}, // Saturn   planet r=1.50  (1.08x)
@@ -294,7 +294,7 @@ function frame(now){
   scrollTgt=clamp(scrollTgt,0,SMAX);
   // scrollPos follows slowly so the camera travels the full interpolated
   // path between stops — this is what makes transit feel cinematic
-  scrollPos=lerp(scrollPos,scrollTgt,clamp(dt*1.5,0,1));
+  scrollPos=lerp(scrollPos,scrollTgt,clamp(dt*3.5,0,1));
   scrollPos=clamp(scrollPos,0,SMAX);
 
   // direct-path camera — always flies from recorded departure to current destination.
@@ -497,7 +497,7 @@ function frame(now){
           const tc=(ci>=0&&ci<line.length)?line[ci]:' ';
           if(tc!==' '){
             const n=fhash(bx,by,nearStop*13+7);
-            ch=n<prox*prox?tc:GIB[hash32(bx,by,tik)%GIB.length];
+            ch=n<Math.pow(prox,0.4)?tc:GIB[hash32(bx,by,tik)%GIB.length];
           }
         }
         if(ch!==' '){
