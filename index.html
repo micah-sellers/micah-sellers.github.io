@@ -137,7 +137,21 @@ let scrollTgt=0,scrollVel=0,scrollPos=0;
 addEventListener('wheel',e=>{scrollVel+=e.deltaY*0.035;},{passive:true});
 
 let mouseX=0,mouseY=0;
-cvs.addEventListener('mousemove',e=>{const r=cvs.getBoundingClientRect();mouseX=e.clientX-r.left;mouseY=e.clientY-r.top;});
+let dragActive=false,dragLastX=0,dragLastY=0,dragMoved=false;
+let orbitYaw=0,orbitPitch=0,inPlanetStop=false;
+cvs.addEventListener('mousemove',e=>{
+  const r=cvs.getBoundingClientRect();
+  mouseX=e.clientX-r.left;mouseY=e.clientY-r.top;
+  if(dragActive&&inPlanetStop){
+    orbitYaw-=(e.clientX-dragLastX)*0.004;
+    orbitPitch=clamp(orbitPitch+(e.clientY-dragLastY)*0.003,-1.3,1.3);
+    dragLastX=e.clientX;dragLastY=e.clientY;
+    dragMoved=true;
+  }
+});
+cvs.addEventListener('mousedown',e=>{if(e.button===0){dragActive=true;dragMoved=false;dragLastX=e.clientX;dragLastY=e.clientY;}});
+cvs.addEventListener('mouseup',()=>{dragActive=false;});
+cvs.addEventListener('mouseleave',()=>{dragActive=false;});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Camera — self-contained module. Reuse by copying this object and the
@@ -201,13 +215,14 @@ const Camera={
 // direct-flight nav state — records departure each time destination changes
 let navToI=0,navFromScroll=0;
 let navFromPos=[130,230,310],navFromTgt=[130,0,0],navFromFov=62;
+let planetEntryTimer=0,prevInPlanetStop=false;
 
 // click: fly to the clicked body or HUD stop
 let lastCam=null;
 const HUD_NAMES=['Overview','Sol','Mercury','Venus','Earth','Mars','Jupiter','Saturn','Uranus'];
 const HUD_W=CW*14;
 cvs.addEventListener('click',e=>{
-  if(!lastCam)return;
+  if(!lastCam||dragMoved)return;
   const rect=cvs.getBoundingClientRect();
   const mx=e.clientX-rect.left,my=e.clientY-rect.top;
   // HUD list items
@@ -303,17 +318,47 @@ function frame(now){
   const nearI=Math.round(sf); // used by HUD / text overlay below
   const destI=Math.round(scrollTgt/SS);
   if(destI!==navToI){
-    // destination changed — record current camera state as the new departure
     navFromPos=[...Camera.pos];navFromTgt=[...Camera.tgt];navFromFov=Camera.fov;
     navFromScroll=scrollPos;navToI=destI;
+    // init orbit angles from default view direction so arrival is seamless
+    if(destI>=2&&destI<=8){
+      const bd=stopCamDir(bodyPos[destI-1]);
+      orbitYaw=Math.atan2(bd[0],bd[2]);
+      orbitPitch=Math.asin(clamp(bd[1],-1,1));
+    }
   }
-  // destination preset recomputed each frame so planets are tracked as they orbit
   const dest=getStopPreset(navToI);
   const scrSpan=navToI*SS-navFromScroll;
   const rawT=Math.abs(scrSpan)<0.01?1:clamp((scrollPos-navFromScroll)/scrSpan,0,1);
   const easedT=rawT*rawT*(3-2*rawT);
-  Camera.setGoal(lv(navFromPos,dest.pos,easedT),lv(navFromTgt,dest.tgt,easedT),lerp(navFromFov,dest.fov,easedT));
-  Camera.update(dt,rawT>0.97?'stop':'transit');
+  inPlanetStop=navToI>=2&&navToI<=8&&rawT>0.97;
+  // During transit, keep orbit angles locked to stopCamDir so the handoff is seamless
+  if(navToI>=2&&navToI<=8&&!inPlanetStop){
+    const bd=stopCamDir(bodyPos[navToI-1]);
+    orbitYaw=Math.atan2(bd[0],bd[2]);
+    orbitPitch=Math.asin(clamp(bd[1],-1,1));
+  }
+  if(inPlanetStop){
+    // orbit mode: position computed from spherical angles, drag rotates them
+    const planet=bodyPos[navToI-1];
+    const v=STOP_VIEW[navToI];
+    const od=[Math.sin(orbitYaw)*Math.cos(orbitPitch),Math.sin(orbitPitch),Math.cos(orbitYaw)*Math.cos(orbitPitch)];
+    const sp=add(planet,mul(od,v.dist));
+    if(!prevInPlanetStop)planetEntryTimer=0;
+    planetEntryTimer+=dt;
+    // lerp rate ramps from transit-speed up to stop-speed over ~2s — no hard snap ever
+    const entryF=Math.min(planetEntryTimer/2.0,1.0);
+    const rate=lerp(Camera.rates.transitPos,Camera.rates.stopPos,entryF*entryF);
+    const lp=clamp(1-Math.exp(-rate*dt),0,1);
+    Camera.pos=lv(Camera.pos,sp,lp);Camera._gPos=[...sp];
+    Camera.tgt=lv(Camera.tgt,planet,lp);Camera._gTgt=[...planet];
+    Camera.fov=lerp(Camera.fov,v.fov,clamp(1-Math.exp(-Camera.rates.stopFov*dt),0,1));
+    prevInPlanetStop=true;
+  }else{
+    prevInPlanetStop=false;
+    Camera.setGoal(lv(navFromPos,dest.pos,easedT),lv(navFromTgt,dest.tgt,easedT),lerp(navFromFov,dest.fov,easedT));
+    Camera.update(dt,rawT>0.97?'stop':'transit');
+  }
 
   ctx.fillStyle='#000';
   ctx.fillRect(0,0,cvs.width,cvs.height);
@@ -544,7 +589,7 @@ function frame(now){
     ctx.fillStyle=hovered?`rgb(255,255,255)`:`rgb(${Math.floor(80*br)},${Math.floor(100*br)},${Math.floor(160*br)})`;
     ctx.fillText((i===nearStop&&prox>0.7?'>':' ')+' '+HUD_NAMES[i],CW,hy);
   }
-  cvs.style.cursor=hudCursor?'pointer':'default';
+  cvs.style.cursor=hudCursor?'pointer':inPlanetStop?(dragActive?'grabbing':'grab'):'default';
   if(globT<4){
     const a=clamp(1-(globT-2),0,1);
     if(a>0){ctx.fillStyle=`rgba(80,90,130,${a*0.7})`;ctx.fillText('scroll to navigate',CW,GH*CH-CH*2);}
