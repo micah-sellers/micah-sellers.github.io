@@ -44,22 +44,22 @@ const RAMP=' .`\'^"-~:;Il!i><+_?][}{1)(|/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@
 
 // --- scene bodies ---
 const BODIES=[
-  {id:0,name:'Sol',    pos:[0,0,0], r:2.0, orbitR:0,  col:[255,200,80],  cs:'*@#$%&8!+~',  sun:true,
+  {id:0,name:'Sol',    pos:[0,0,0],  r:6.0, orbitR:0,   col:[255,200,80],  cs:'*@#$%&8!+~',  sun:true,
    desc:['THE SUN','Our star','G-type main seq','1.4M km diameter','Surface 5500 C','Core 15 million C','Plasma and fusion']},
-  {id:1,name:'Mercury',pos:[6,0,0], r:0.3, orbitR:6,  col:[180,158,136], cs:'.-:;!|~',   spd:0.746,ph:0,
+  {id:1,name:'Mercury',pos:[18,0,0], r:0.3, orbitR:18,  col:[180,158,136], cs:'.-:;!|~',   spd:0.746,ph:0,
    desc:['MERCURY','Smallest planet','No atmosphere','Extreme temps','Iron core inside','Dense and hot','Cratered surface']},
-  {id:2,name:'Venus',  pos:[10,0,0],r:0.55,orbitR:10, col:[230,200,140], cs:'oO0Q@&*',   spd:0.347,ph:1.0,
+  {id:2,name:'Venus',  pos:[30,0,0], r:0.55,orbitR:30,  col:[230,200,140], cs:'oO0Q@&*',   spd:0.347,ph:1.0,
    desc:['VENUS','Hottest planet','Thick CO2 air','462C surface','Slow rotation','Retrograde spin','Sulfur clouds thick']},
-  {id:3,name:'Earth',  pos:[14,0,0],r:0.6, orbitR:14, col:[80,150,220],  cs:'+x*=#~.',   spd:0.209,ph:2.0,
+  {id:3,name:'Earth',  pos:[42,0,0], r:0.6, orbitR:42,  col:[80,150,220],  cs:'+x*=#~.',   spd:0.209,ph:2.0,
    desc:['EARTH','Our home world','Liquid oceans','Oxygen in air','Plate tectonics','One large moon','Life everywhere']},
-  {id:4,name:'Mars',   pos:[19,0,0],r:0.45,orbitR:19, col:[210,90,70],   cs:'v^<>|/!',   spd:0.132,ph:3.8,
+  {id:4,name:'Mars',   pos:[57,0,0], r:0.45,orbitR:57,  col:[210,90,70],   cs:'v^<>|/!',   spd:0.132,ph:3.8,
    desc:['MARS','The red planet','Thin CO2 air','Olympus Mons','Two small moons','Ancient riverbeds','Cold red desert']},
-  {id:5,name:'Jupiter',pos:[38,0,0],r:1.9, orbitR:38, col:[200,175,140], cs:')(-=+~#',   spd:0.047,ph:5.0,
+  {id:5,name:'Jupiter',pos:[114,0,0],r:1.9, orbitR:114, col:[200,175,140], cs:')(-=+~#',   spd:0.047,ph:5.0,
    desc:['JUPITER','Largest planet','Great Red Spot','95 known moons','Strong radiation','Fast 10hr day','Gas and ice core']},
-  {id:6,name:'Saturn', pos:[60,0,0],r:1.5, orbitR:60, col:[210,190,150], cs:'O0oG@8Q',   spd:0.024,ph:1.5,
+  {id:6,name:'Saturn', pos:[180,0,0],r:1.5, orbitR:180, col:[210,190,150], cs:'O0oG@8Q',   spd:0.024,ph:1.5,
    hasRing:true,ringR1:1.9,ringR2:3.3,
    desc:['SATURN','Ringed wonder','Ice and rock rings','146 known moons','Hexagonal storm','Low density body','Gas giant twin']},
-  {id:7,name:'Uranus', pos:[85,0,0],r:1.1, orbitR:85, col:[150,215,215], cs:'c<>(){}[]', spd:0.014,ph:4.2,
+  {id:7,name:'Uranus', pos:[255,0,0],r:1.1, orbitR:255, col:[150,215,215], cs:'c<>(){}[]', spd:0.014,ph:4.2,
    desc:['URANUS','Ice giant blue','Tilted 97 degrees','Rolls on its side','27 known moons','Faint thin rings','Methane blue hue']},
 ];
 const bodyPos=BODIES.map(b=>[...b.pos]);
@@ -99,8 +99,8 @@ const SS=5; // stop spacing
 const SMAX=8*SS; // 40
 
 function getStopPreset(si){
-  if(si===0)return{pos:[42,65,85],tgt:[42,0,0],fov:60};
-  if(si===1)return{pos:[3,4,5],   tgt:[0,0,0], fov:46};
+  if(si===0)return{pos:[130,230,310],tgt:[130,0,0],fov:62};
+  if(si===1)return{pos:[9,12,15],   tgt:[0,0,0], fov:50};
   const p=bodyPos[si-1]; // body index = stop index - 1
   const v=STOP_VIEW[si];
   const cp=[p[0]+v.po[0],p[1]+v.po[1],p[2]+v.po[2]];
@@ -120,7 +120,7 @@ let scrollTgt=0,scrollVel=0,scrollPos=0;
 addEventListener('wheel',e=>{scrollVel+=e.deltaY*0.035;},{passive:true});
 
 // camera state (smoothly lerped)
-let camPos=[42,65,85],camTgt=[42,0,0],camFov=60;
+let camPos=[130,230,310],camTgt=[130,0,0],camFov=62;
 
 // --- camera ---
 function buildCam(pos,tgt,fovDeg){
@@ -316,6 +316,36 @@ function frame(now){
       if(gx<0||gx>=GW||gy<0||gy>=GH)continue;
       const idx=gy*GW+gx;
       if(!occ[idx])grid[idx]={ch:'.',r:38,g:38,b:58};
+    }
+  }
+
+  // --- sun rays post-pass ---
+  // screen-space cosine-lobe rays emanating from the sun's projected position
+  const sunProj=projectPt(bodyPos[0],cam);
+  if(sunProj){
+    const[spx,spy]=sunProj;
+    const N_RAYS=16,RAY_CS='*+.~`';
+    const rotOff=globT*0.04;
+    for(let cy=0;cy<GH;cy++){
+      for(let cx=0;cx<GW;cx++){
+        const idx=cy*GW+cx;
+        if(occ[idx])continue;
+        const pxDx=(cx-spx)*CW,pxDy=(cy-spy)*CH;
+        const dist=Math.sqrt(pxDx*pxDx+pxDy*pxDy);
+        if(dist<8||dist>320)continue;
+        const angle=Math.atan2(pxDy,pxDx);
+        // |cos(angle * N/2)|^8 gives exactly N_RAYS lobes per full circle
+        const lobe=Math.pow(Math.abs(Math.cos((angle-rotOff)*N_RAYS/2)),8);
+        if(lobe<0.06)continue;
+        const nearFade=clamp((dist-8)/40,0,1);
+        const farFade=clamp(1-dist/320,0,1);
+        const br=lobe*nearFade*farFade*0.9;
+        if(br<0.04)continue;
+        const h=fhash(cx,cy,777);
+        const ch=RAY_CS[Math.floor(h*RAY_CS.length)];
+        const sc=BODIES[0].col;
+        grid[idx]={ch,r:Math.floor(sc[0]*br),g:Math.floor(sc[1]*br*0.75),b:Math.floor(sc[2]*br*0.35)};
+      }
     }
   }
 
