@@ -55,22 +55,22 @@ const RAMP=' .`\'^"-~:;Il!i><+_?][}{1)(|/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@
 
 // --- scene bodies ---
 const BODIES=[
-  {id:0,name:'Sol',    pos:[0,0,0],  r:6.0, orbitR:0,   col:[255,200,80],  cs:'*@#$%&8!+~',  sun:true,
+  {id:0,name:'Sol',    pos:[0,0,0],  r:5, orbitR:0,   col:[255,200,80],  cs:'*@#$%&8!+~',  sun:true,
    desc:['THE SUN','Our star','G-type main seq','1.4M km diameter','Surface 5500 C','Core 15 million C','Plasma and fusion']},
-  {id:1,name:'Mercury',pos:[18,0,0], r:0.3, orbitR:18,  col:[180,158,136], cs:'.-:;!|~',   spd:0.093,ph:0,
+  {id:1,name:'Mercury',pos:[16.5,0,0], r:0.45, orbitR:16.5,  col:[180,158,136], cs:'.-:;!|~',   spd:0.093,ph:0,
    desc:['MERCURY','Smallest planet','No atmosphere','Extreme temps','Iron core inside','Dense and hot','Cratered surface']},
-  {id:2,name:'Venus',  pos:[30,0,0], r:0.55,orbitR:30,  col:[230,200,140], cs:'oO0Q@&*',   spd:0.044,ph:1.0,
+  {id:2,name:'Venus',  pos:[27,0,0], r:0.825,orbitR:27,  col:[230,200,140], cs:'oO0Q@&*',   spd:0.044,ph:1.0,
    desc:['VENUS','Hottest planet','Thick CO2 air','462C surface','Slow rotation','Retrograde spin','Sulfur clouds thick']},
-  {id:3,name:'Earth',  pos:[42,0,0], r:0.6, orbitR:42,  col:[80,150,220],  cs:'+x*=#~.',   spd:0.026,ph:2.0,
+  {id:3,name:'Earth',  pos:[37.5,0,0], r:0.9, orbitR:37.5,  col:[80,150,220],  cs:'+x*=#~.',   spd:0.026,ph:2.0,
    desc:['EARTH','Our home world','Liquid oceans','Oxygen in air','Plate tectonics','One large moon','Life everywhere']},
-  {id:4,name:'Mars',   pos:[57,0,0], r:0.45,orbitR:57,  col:[210,90,70],   cs:'v^<>|/!',   spd:0.0165,ph:3.8,
+  {id:4,name:'Mars',   pos:[51,0,0], r:0.675,orbitR:51,  col:[210,90,70],   cs:'v^<>|/!',   spd:0.0165,ph:3.8,
    desc:['MARS','The red planet','Thin CO2 air','Olympus Mons','Two small moons','Ancient riverbeds','Cold red desert']},
-  {id:5,name:'Jupiter',pos:[114,0,0],r:1.9, orbitR:114, col:[200,175,140], cs:')(-=+~#',   spd:0.012,ph:5.0,
+  {id:5,name:'Jupiter',pos:[102,0,0],r:2.85, orbitR:102, col:[200,175,140], cs:')(-=+~#',   spd:0.012,ph:5.0,
    desc:['JUPITER','Largest planet','Great Red Spot','95 known moons','Strong radiation','Fast 10hr day','Gas and ice core']},
-  {id:6,name:'Saturn', pos:[180,0,0],r:1.5, orbitR:180, col:[210,190,150], cs:'O0oG@8Q',   spd:0.006,ph:1.5,
-   hasRing:true,ringR1:1.9,ringR2:3.3,
+  {id:6,name:'Saturn', pos:[162,0,0],r:2.25, orbitR:162, col:[210,190,150], cs:'O0oG@8Q',   spd:0.006,ph:1.5,
+   hasRing:true,ringR1:2.85,ringR2:4.95,
    desc:['SATURN','Ringed wonder','Ice and rock rings','146 known moons','Hexagonal storm','Low density body','Gas giant twin']},
-  {id:7,name:'Uranus', pos:[255,0,0],r:1.1, orbitR:255, col:[150,215,215], cs:'c<>(){}[]', spd:0.0035,ph:4.2,
+  {id:7,name:'Uranus', pos:[229.5,0,0],r:1.65, orbitR:229.5, col:[150,215,215], cs:'c<>(){}[]', spd:0.0035,ph:4.2,
    desc:['URANUS','Ice giant blue','Tilted 97 degrees','Rolls on its side','27 known moons','Faint thin rings','Methane blue hue']},
 ];
 const bodyPos=BODIES.map(b=>[...b.pos]);
@@ -80,9 +80,9 @@ const bodyPos=BODIES.map(b=>[...b.pos]);
 const ATM=[
   null,
   null, // Mercury - no atmosphere
-  {r:0.62, col:[220,190,110], str:0.90}, // Venus    planet r=0.55, +0.07
-  {r:0.68, col:[ 60,130,255], str:0.75}, // Earth    planet r=0.60, +0.08
-  {r:0.51, col:[205,110, 70], str:0.45}, // Mars     planet r=0.45, +0.06
+  {r:0.93, col:[220,190,110], str:0.90}, // Venus    planet r=0.825, +0.105
+  {r:1.02, col:[ 60,130,255], str:0.75}, // Earth    planet r=0.9, +0.12
+  {r:0.765, col:[205,110, 70], str:0.45}, // Mars     planet r=0.675, +0.09
   null, // Jupiter - no atmosphere
   null, // Saturn - no atmosphere
   null, // Uranus - no atmosphere
@@ -99,13 +99,13 @@ const STOPS=[null,...BODIES];
 const STOP_VIEW=[
   null,                         // 0 overview
   null,                         // 1 sun
-  {po:[0.5, 0.5, 0.325], fov:60},  // 2 mercury  offset right
-  {po:[0.5, 0.875, 0.55], fov:58},  // 3 venus    offset right
-  {po:[0.5, 0.95, 0.6], fov:58},  // 4 earth    offset right
-  {po:[0.5, 0.75, 0.475], fov:58},  // 5 mars     offset right
-  {po:[1.0, 3.0, 1.875], fov:55},  // 6 jupiter  offset right
-  {po:[1.0, 2.375, 1.5], fov:55},  // 7 saturn   offset right
-  {po:[1.0, 1.75, 1.1], fov:55},  // 8 uranus   offset right
+  {po:[0.75, 0.75, 0.4875], fov:60},  // 2 mercury  offset right
+  {po:[0.75, 1.3125, 0.825], fov:58},  // 3 venus    offset right
+  {po:[0.75, 1.425, 0.9], fov:58},  // 4 earth    offset right
+  {po:[0.75, 1.125, 0.7125], fov:58},  // 5 mars     offset right
+  {po:[1.5, 4.5, 2.8125], fov:55},  // 6 jupiter  offset right
+  {po:[1.5, 3.5625, 2.25], fov:55},  // 7 saturn   offset right
+  {po:[1.5, 2.625, 1.65], fov:55},  // 8 uranus   offset right
 ];
 
 // scroll: each stop is STOP_SPACING units apart so reaching a planet takes a few scrolls
@@ -113,8 +113,8 @@ const SS=5; // stop spacing
 const SMAX=8*SS; // 40
 
 function getStopPreset(si){
-  if(si===0)return{pos:[130,100,130],tgt:[130,0,0],fov:62};
-  if(si===1)return{pos:[9,12,15],   tgt:[0,0,0], fov:50};
+  if(si===0)return{pos:[0,22.5,37.5],tgt:[0,0,0],fov:100};
+  if(si===1)return{pos:[3,4.5,6],   tgt:[0,0,0], fov:50};
   const p=bodyPos[si-1]; // body index = stop index - 1
   const v=STOP_VIEW[si];
   const cp=[p[0]+v.po[0],p[1]+v.po[1],p[2]+v.po[2]];
