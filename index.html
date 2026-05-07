@@ -16,22 +16,17 @@ const CW=10,CH=16;
 const cvs=document.getElementById('c');
 const ctx=cvs.getContext('2d');
 let GW,GH;
-
-function resize(){
-  cvs.width=innerWidth;cvs.height=innerHeight;
-  GW=Math.floor(cvs.width/CW);GH=Math.floor(cvs.height/CH);
-}
-resize();
-addEventListener('resize',resize);
+function resize(){cvs.width=innerWidth;cvs.height=innerHeight;GW=Math.floor(cvs.width/CW);GH=Math.floor(cvs.height/CH);}
+resize();addEventListener('resize',resize);
 
 // --- vec3 ---
 const add=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
 const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
 const mul=(a,s)=>[a[0]*s,a[1]*s,a[2]*s];
 const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
-const len2=(a)=>dot(a,a);
-const len=(a)=>Math.sqrt(len2(a));
-const norm=(a)=>{const l=len(a);return l<1e-9?[0,1,0]:mul(a,1/l);};
+const len2=a=>dot(a,a);
+const len=a=>Math.sqrt(len2(a));
+const norm=a=>{const l=len(a);return l<1e-9?[0,1,0]:mul(a,1/l);};
 const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
 const lerp=(a,b,t)=>a+(b-a)*t;
 const lv=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];
@@ -41,15 +36,15 @@ const clamp=(x,lo,hi)=>Math.max(lo,Math.min(hi,x));
 function hash32(x,y,s){
   let h=(Math.imul(x,374761393)^Math.imul(y,1376312589)^Math.imul(s,2654435761))>>>0;
   h=Math.imul(h^(h>>>13),1540483477)>>>0;
-  return (h^(h>>>15))>>>0;
+  return(h^(h>>>15))>>>0;
 }
 const fhash=(x,y,s)=>hash32(x,y,s)/0xFFFFFFFF;
 
-// --- scene ---
 const RAMP=' .`\'^"-~:;Il!i><+_?][}{1)(|/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$';
 
+// --- scene bodies ---
 const BODIES=[
-  {id:0,name:'Sol',    pos:[0,0,0], r:2.0, orbitR:0,  col:[255,200,80],  cs:'+*@#$%&8!',   sun:true,
+  {id:0,name:'Sol',    pos:[0,0,0], r:2.0, orbitR:0,  col:[255,200,80],  cs:'*@#$%&8!+~',  sun:true,
    desc:['THE SUN','Our star','G-type main seq','1.4M km diameter','Surface 5500 C','Core 15 million C','Plasma and fusion']},
   {id:1,name:'Mercury',pos:[6,0,0], r:0.3, orbitR:6,  col:[180,158,136], cs:'.-:;!|~',   spd:0.746,ph:0,
    desc:['MERCURY','Smallest planet','No atmosphere','Extreme temps','Iron core inside','Dense and hot','Cratered surface']},
@@ -67,41 +62,67 @@ const BODIES=[
   {id:7,name:'Uranus', pos:[85,0,0],r:1.1, orbitR:85, col:[150,215,215], cs:'c<>(){}[]', spd:0.014,ph:4.2,
    desc:['URANUS','Ice giant blue','Tilted 97 degrees','Rolls on its side','27 known moons','Faint thin rings','Methane blue hue']},
 ];
-// mutable current world positions, updated each frame
 const bodyPos=BODIES.map(b=>[...b.pos]);
 
-// camera offset from planet centre and fov for each stop (stops 2-8 follow orbiting planets)
-const STOP_OFF=[ null,          null,        [0,3.5,7], [0,3.5,8], [0,4,9], [0,3.5,8], [0,9,16], [0,9,16], [0,9,16] ];
-const STOP_FOV=[ 60,            46,           44,        44,        44,       44,         48,        48,        48      ];
+// atmosphere for each body index 1-7
+// r hugs the planet (≈1.2-1.3× planet radius) for a sharp sphere look
+const ATM=[
+  null,
+  {r:0.38, col:[200,175,150], str:0.30}, // Mercury  planet r=0.30
+  {r:0.70, col:[220,190,110], str:0.90}, // Venus    planet r=0.55
+  {r:0.76, col:[ 60,130,255], str:0.75}, // Earth    planet r=0.60
+  {r:0.57, col:[205,110, 70], str:0.45}, // Mars     planet r=0.45
+  {r:2.38, col:[195,165,125], str:0.80}, // Jupiter  planet r=1.90
+  {r:1.88, col:[205,185,145], str:0.75}, // Saturn   planet r=1.50
+  {r:1.36, col:[ 80,210,210], str:0.80}, // Uranus   planet r=1.10
+];
 
-// maps scroll stop index → body (stop 0 = overview has no body)
+// stop index → BODIES index
 const STOPS=[null,...BODIES];
+
+// each planet stop positions camera INSIDE its atmosphere, looking at planet center
+// po: offset from planet centre — must satisfy: planet.r < |po| < atm.r
+const STOP_VIEW=[
+  null,                        // 0 overview
+  null,                        // 1 sun
+  {po:[0,0.33,0.17], fov:72}, // 2 mercury  |po|=0.371  atm=0.38  r=0.30 ✓
+  {po:[0,0.60,0.30], fov:72}, // 3 venus    |po|=0.671  atm=0.70  r=0.55 ✓
+  {po:[0,0.65,0.33], fov:72}, // 4 earth    |po|=0.729  atm=0.76  r=0.60 ✓
+  {po:[0,0.49,0.24], fov:72}, // 5 mars     |po|=0.546  atm=0.57  r=0.45 ✓
+  {po:[0,2.10,1.00], fov:72}, // 6 jupiter  |po|=2.327  atm=2.38  r=1.90 ✓
+  {po:[0,1.68,0.80], fov:72}, // 7 saturn   |po|=1.861  atm=1.88  r=1.50 ✓
+  {po:[0,1.20,0.57], fov:72}, // 8 uranus   |po|=1.329  atm=1.36  r=1.10 ✓
+];
+
+// scroll: each stop is STOP_SPACING units apart so reaching a planet takes a few scrolls
+const SS=5; // stop spacing
+const SMAX=8*SS; // 40
 
 function getStopPreset(si){
   if(si===0)return{pos:[42,65,85],tgt:[42,0,0],fov:60};
-  if(si===1)return{pos:[3,4,5],   tgt:[0,0,0], fov:46}; // sun fixed
-  const p=bodyPos[si-1]; // body index = stop-1
-  const o=STOP_OFF[si];
-  return{pos:[p[0]+o[0],p[1]+o[1],p[2]+o[2]],tgt:[...p],fov:STOP_FOV[si]};
+  if(si===1)return{pos:[3,4,5],   tgt:[0,0,0], fov:46};
+  const p=bodyPos[si-1]; // body index = stop index - 1
+  const v=STOP_VIEW[si];
+  const cp=[p[0]+v.po[0],p[1]+v.po[1],p[2]+v.po[2]];
+  return{pos:cp,tgt:[...p],fov:v.fov};
 }
 
 function getPreset(s){
-  const i=clamp(Math.floor(s),0,7);
+  const sf=s/SS;
+  const i=clamp(Math.floor(sf),0,7);
+  const f=sf-i;
   const A=getStopPreset(i),B=getStopPreset(Math.min(i+1,8));
-  const f=s-i;
   return{pos:lv(A.pos,B.pos,f),tgt:lv(A.tgt,B.tgt,f),fov:lerp(A.fov,B.fov,f)};
 }
 
-// --- scroll state ---
+// scroll state — with dt integration, sensitivity 0.035 ≈ 1 unit/notch → ~5 notches/stop
 let scrollTgt=0,scrollVel=0,scrollPos=0;
-addEventListener('wheel',e=>{scrollVel+=e.deltaY*0.005;},{passive:true});
+addEventListener('wheel',e=>{scrollVel+=e.deltaY*0.035;},{passive:true});
 
-// --- camera state ---
-let camPos=[42,65,85];
-let camTgt=[42,0,0];
-let camFov=60;
+// camera state (smoothly lerped)
+let camPos=[42,65,85],camTgt=[42,0,0],camFov=60;
 
-// --- camera helpers ---
+// --- camera ---
 function buildCam(pos,tgt,fovDeg){
   const fwd=norm(sub(tgt,pos));
   const wUp=Math.abs(dot(fwd,[0,1,0]))>0.98?[0,0,-1]:[0,1,0];
@@ -111,84 +132,65 @@ function buildCam(pos,tgt,fovDeg){
   const aspect=(GW*CW)/(GH*CH);
   const tanH=Math.tan(fov/2);
   const tanW=tanH*aspect;
-  return {pos,fwd,rgt,up,tanW,tanH};
+  return{pos,fwd,rgt,up,tanW,tanH};
 }
-
 function getRay(cx,cy,cam){
-  const u=(cx+0.5)/GW*2-1;
-  const v=1-(cy+0.5)/GH*2;
+  const u=(cx+0.5)/GW*2-1,v=1-(cy+0.5)/GH*2;
   return norm(add(add(cam.fwd,mul(cam.rgt,u*cam.tanW)),mul(cam.up,v*cam.tanH)));
 }
-
 function projectPt(p,cam){
   const d=sub(p,cam.pos);
   const fz=dot(d,cam.fwd);
   if(fz<=0.001)return null;
-  const fx=dot(d,cam.rgt);
-  const fy=dot(d,cam.up);
-  const sx=(fx/(fz*cam.tanW)*0.5+0.5)*GW;
-  const sy=(0.5-fy/(fz*cam.tanH)*0.5)*GH;
-  return[Math.floor(sx),Math.floor(sy)];
+  const fx=dot(d,cam.rgt),fy=dot(d,cam.up);
+  return[Math.floor((fx/(fz*cam.tanW)*0.5+0.5)*GW),Math.floor((0.5-fy/(fz*cam.tanH)*0.5)*GH)];
 }
 
 // --- intersections ---
 function raySphere(ro,rd,cen,r){
-  const oc=sub(ro,cen);
-  const b=dot(oc,rd);
-  const c=len2(oc)-r*r;
-  const disc=b*b-c;
+  const oc=sub(ro,cen),b=dot(oc,rd),c=len2(oc)-r*r,disc=b*b-c;
   if(disc<0)return -1;
   const sq=Math.sqrt(disc);
-  let t=-b-sq;
-  if(t<0.001)t=-b+sq;
+  let t=-b-sq;if(t<0.001)t=-b+sq;
   return t<0.001?-1:t;
 }
 
-// horizontal disk intersection (normal=[0,1,0])
 function rayDisk(ro,rd,cenY,r1,r2,cenX,cenZ){
   if(Math.abs(rd[1])<1e-6)return -1;
-  const t=(cenY-ro[1])/rd[1];
-  if(t<0.001)return -1;
-  const px=ro[0]+rd[0]*t-cenX;
-  const pz=ro[2]+rd[2]*t-cenZ;
-  const d2=px*px+pz*pz;
-  return (d2>=r1*r1&&d2<=r2*r2)?t:-1;
+  const t=(cenY-ro[1])/rd[1];if(t<0.001)return -1;
+  const px=ro[0]+rd[0]*t-cenX,pz=ro[2]+rd[2]*t-cenZ,d2=px*px+pz*pz;
+  return(d2>=r1*r1&&d2<=r2*r2)?t:-1;
 }
 
-// --- stars (static scatter) ---
+// --- stars ---
 const STARS=[];
-for(let i=0;i<280;i++){
-  STARS.push([fhash(i,0,77),fhash(i,0,88),fhash(i,0,99)]);
-}
+for(let i=0;i<280;i++)STARS.push([fhash(i,0,77),fhash(i,0,88),fhash(i,0,99)]);
 
 let lastT=performance.now(),globT=0;
 
 function frame(now){
   const dt=Math.min((now-lastT)/1000,0.05);
-  lastT=now; globT+=dt;
+  lastT=now;globT+=dt;
 
-  // advance planet orbital positions
+  // advance orbits
   for(let bi=1;bi<BODIES.length;bi++){
-    const b=BODIES[bi];
-    const a=globT*b.spd+b.ph;
+    const b=BODIES[bi],a=globT*b.spd+b.ph;
     bodyPos[bi][0]=Math.cos(a)*b.orbitR;
     bodyPos[bi][2]=Math.sin(a)*b.orbitR;
   }
 
-  // scroll physics
-  scrollVel*=Math.exp(-4*dt);
-  scrollTgt+=scrollVel;
-  scrollTgt=clamp(scrollTgt,0,8);
-  if(Math.abs(scrollVel)<0.04){
-    const sn=Math.round(scrollTgt);
-    scrollTgt=lerp(scrollTgt,sn,clamp(dt*3.5,0,1));
-  }
-  scrollPos=lerp(scrollPos,scrollTgt,clamp(1-Math.exp(-5*dt),0,1));
-  scrollPos=clamp(scrollPos,0,8);
+  // scroll physics — spring-damper system, dt-integrated so fps doesn't affect speed
+  const sn=Math.round(scrollTgt/SS)*SS;
+  scrollVel+=(sn-scrollTgt)*4*dt;   // spring toward nearest stop
+  scrollVel*=Math.exp(-3.5*dt);     // friction damping
+  scrollTgt+=scrollVel*dt;          // integrate with dt (fixes frame-rate dependency)
+  scrollTgt=clamp(scrollTgt,0,SMAX);
+  scrollPos=lerp(scrollPos,scrollTgt,clamp(dt*10,0,1)); // fast visual follow
+  scrollPos=clamp(scrollPos,0,SMAX);
 
-  // camera lerp (weighted, inertial)
+  // inertial camera lerp — slow half-life (~0.7s) for weighted feel
   const pr=getPreset(scrollPos);
-  const lk=clamp(1-Math.exp(-2*dt),0,1);
+  const lk=clamp(1-Math.exp(-1.4*dt),0,1);
   camPos=lv(camPos,pr.pos,lk);
   camTgt=lv(camTgt,pr.tgt,lk);
   camFov=lerp(camFov,pr.fov,lk);
@@ -201,27 +203,22 @@ function frame(now){
   const cam=buildCam(camPos,camTgt,camFov);
   const N=GW*GH;
   const grid=new Array(N).fill(null);
-  const occ=new Uint8Array(N); // 1=sphere, 2=ring
+  const occ=new Uint8Array(N); // 1=planet 2=ring 3=atm
 
-  // stars in background
-  for(const [u,v,br] of STARS){
+  // stars
+  for(const[u,v,br] of STARS){
     const gx=Math.floor(u*GW),gy=Math.floor(v*GH);
-    if(gx>=0&&gx<GW&&gy>=0&&gy<GH){
-      const b=Math.floor(50+br*110);
-      grid[gy*GW+gx]={ch:'.',r:b,g:b,b:b};
-    }
+    if(gx>=0&&gx<GW&&gy>=0&&gy<GH){const b=Math.floor(50+br*110);grid[gy*GW+gx]={ch:'.',r:b,g:b,b:b};}
   }
 
-  // raycasting
+  // --- main raycast ---
   for(let cy=0;cy<GH;cy++){
     for(let cx=0;cx<GW;cx++){
-      const rd=getRay(cx,cy,cam);
-      const ro=camPos;
+      const rd=getRay(cx,cy,cam),ro=camPos;
       let minT=1e9,hitB=null,isRing=false;
 
       for(const body of BODIES){
         const bp=bodyPos[body.id];
-        // check physical ring (Saturn)
         if(body.hasRing){
           const tR=rayDisk(ro,rd,bp[1],body.ringR1,body.ringR2,bp[0],bp[2]);
           if(tR>0&&tR<minT){
@@ -229,58 +226,92 @@ function frame(now){
             if(tS<0||tR<tS){minT=tR;hitB=body;isRing=true;}
           }
         }
-        // sphere
         const tS=raySphere(ro,rd,bp,body.r);
         if(tS>0&&tS<minT){minT=tS;hitB=body;isRing=false;}
       }
 
       if(!hitB)continue;
-      const idx=cy*GW+cx;
-      const hbp=bodyPos[hitB.id];
+      const idx=cy*GW+cx,hbp=bodyPos[hitB.id];
 
       if(isRing){
         const rp=add(ro,mul(rd,minT));
         const toSun=norm(sub(bodyPos[0],rp));
         const d=clamp(0.15+0.85*Math.abs(toSun[1]),0.1,1);
-        const rc='=-~.oO*+';
-        const h=fhash(cx,cy,hitB.id+100);
-        const ch=rc[Math.floor(h*rc.length)];
+        const h=fhash(cx,cy,hitB.id+100),rc='=-~.oO*+';
         const c=hitB.col;
-        grid[idx]={ch,r:Math.floor(c[0]*d*0.7),g:Math.floor(c[1]*d*0.7),b:Math.floor(c[2]*d*0.7)};
+        grid[idx]={ch:rc[Math.floor(h*rc.length)],r:Math.floor(c[0]*d*0.7),g:Math.floor(c[1]*d*0.7),b:Math.floor(c[2]*d*0.7)};
         occ[idx]=2;
-      } else {
-        const hp=add(ro,mul(rd,minT));
-        const nrm=norm(sub(hp,hbp));
+      }else{
+        const hp=add(ro,mul(rd,minT)),nrm=norm(sub(hp,hbp));
         const toSun=norm(sub(bodyPos[0],hp));
-        let brightness;
+        let br;
         if(hitB.sun){
-          brightness=0.55+0.45*Math.abs(nrm[1]);
-          brightness*=0.88+0.12*fhash(cx,cy,Math.floor(globT*10));
-        } else {
-          brightness=clamp(0.2+0.8*dot(nrm,toSun),0,1);
+          // two-scale granulation anchored to surface normal (stable texture on sphere)
+          const s1=5,s2=13;
+          const g1=fhash((nrm[0]*s1+40)|0,(nrm[1]*s1+40)|0,(nrm[2]*s1+40)|0);
+          const g2=fhash((nrm[0]*s2+80)|0,(nrm[1]*s2+80)|0,(nrm[2]*s2+80)|0);
+          const gran=g1*0.6+g2*0.4; // 0–1
+          // limb darkening: edge of disk is slightly cooler
+          const facing=Math.max(0,dot(nrm,norm(sub(camPos,hbp))));
+          const limb=0.78+0.22*facing;
+          // ~10% of surface is sunspot (dark cell)
+          const isSunspot=gran<0.10;
+          br=isSunspot
+            ? clamp(0.22+gran*2.2,0,0.48)          // dark spot: 0.22–0.44
+            : clamp(limb*(0.80+0.20*gran),0,1);    // bright cell: 0.78–1.00
+          // subtle plasma shimmer (slow flicker)
+          br=clamp(br*(0.94+0.06*fhash(cx,cy,Math.floor(globT*5))),0,1);
+        }else{
+          br=clamp(0.2+0.8*dot(nrm,toSun),0,1);
         }
-        const ri=Math.floor(brightness*(RAMP.length-1));
-        const base=RAMP[ri];
-        const h=fhash(cx,cy,hitB.id);
-        const cs=hitB.cs;
-        let ch=(brightness>0.07&&h<0.38)?cs[Math.floor(h/0.38*cs.length)]:base;
-        if(!hitB.sun&&ch===' ')ch='.'; // planets never vanish
+        const ri=Math.floor(br*(RAMP.length-1)),base=RAMP[ri];
+        const h=fhash(cx,cy,hitB.id),cs=hitB.cs;
+        let ch=(br>0.07&&h<0.38)?cs[Math.floor(h/0.38*cs.length)]:base;
+        if(!hitB.sun&&ch===' ')ch='.';
         const c=hitB.col;
-        grid[idx]={ch,r:Math.floor(c[0]*brightness),g:Math.floor(c[1]*brightness),b:Math.floor(c[2]*brightness)};
+        grid[idx]={ch,r:Math.floor(c[0]*br),g:Math.floor(c[1]*br),b:Math.floor(c[2]*br)};
         occ[idx]=1;
       }
     }
   }
 
-  // orbit ring post-pass (project circle samples, write to unoccupied cells)
+  // --- atmosphere shell pass ---
+  // treat each atmosphere as a solid sphere; render cells the planet doesn't cover.
+  // skip if the camera is already inside that atmosphere (global tint handles it).
+  // result: a sharp sphere hugging the planet with diffuse sun lighting, no fading.
+  const atmCS='oO0()@#+*';
+  for(let cy=0;cy<GH;cy++){
+    for(let cx=0;cx<GW;cx++){
+      const idx=cy*GW+cx;
+      if(occ[idx])continue;
+      const rd=getRay(cx,cy,cam),ro=camPos;
+      for(let bi=1;bi<BODIES.length;bi++){
+        const atm=ATM[bi];if(!atm)continue;
+        const bp=bodyPos[bi];
+        // skip: camera inside this atmosphere (global tint overlay covers it)
+        if(len2(sub(camPos,bp))<atm.r*atm.r)continue;
+        const tA=raySphere(ro,rd,bp,atm.r);
+        if(tA<0)continue;
+        // diffuse lighting at the atmosphere surface hit point
+        const hp=add(ro,mul(rd,tA));
+        const nrm=norm(sub(hp,bp));
+        const toSun=norm(sub(bodyPos[0],hp));
+        const br=clamp(0.25+0.75*dot(nrm,toSun),0,1);
+        const c=atm.col,h=fhash(cx,cy,bi*311+29);
+        grid[idx]={ch:atmCS[Math.floor(h*atmCS.length)],r:Math.floor(c[0]*br),g:Math.floor(c[1]*br),b:Math.floor(c[2]*br)};
+        occ[idx]=3;
+        break;
+      }
+    }
+  }
+
+  // --- orbit ring post-pass ---
   for(const body of BODIES){
     if(!body.orbitR)continue;
-    const nSamples=Math.max(200,Math.ceil(body.orbitR*14));
-    for(let i=0;i<nSamples;i++){
-      const a=i/nSamples*Math.PI*2;
-      const p=[Math.cos(a)*body.orbitR,0,Math.sin(a)*body.orbitR];
-      const proj=projectPt(p,cam);
-      if(!proj)continue;
+    const nS=Math.max(200,Math.ceil(body.orbitR*14));
+    for(let i=0;i<nS;i++){
+      const a=i/nS*Math.PI*2,p=[Math.cos(a)*body.orbitR,0,Math.sin(a)*body.orbitR];
+      const proj=projectPt(p,cam);if(!proj)continue;
       const[gx,gy]=proj;
       if(gx<0||gx>=GW||gy<0||gy>=GH)continue;
       const idx=gy*GW+gx;
@@ -288,89 +319,77 @@ function frame(now){
     }
   }
 
-  // --- text overlay for planet stops ---
-  const nearStop=Math.round(scrollPos);
-  const prox=clamp(1-Math.abs(scrollPos-nearStop)*2.5,0,1);
-
+  // --- text overlay ---
+  const nearStop=Math.round(scrollPos/SS);
+  const prox=clamp(1-Math.abs(scrollPos/SS-nearStop)*2.5,0,1);
   if(nearStop>=1&&nearStop<=8&&prox>0.02){
-    const body=STOPS[nearStop];
-    const desc=body.desc;
+    const body=STOPS[nearStop],desc=body.desc;
     const maxLen=desc.reduce((m,l)=>Math.max(m,l.length),0);
-    const tw=maxLen+4; // 2 border + 1 pad each side
-    const th=desc.length+2; // 2 border rows
-    const tx=GW-tw-2;
-    const ty=Math.floor((GH-th)/2);
+    const tw=maxLen+4,th=desc.length+2;
+    const tx=GW-tw-2,ty=Math.floor((GH-th)/2);
     const tik=Math.floor(globT*7);
     const GIB='!@#$%^&*=+[]{}|;:<>?/~`ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrst';
-
     for(let by=ty;by<ty+th;by++){
       for(let bx=tx;bx<tx+tw;bx++){
         if(bx<0||bx>=GW||by<0||by>=GH)continue;
-        const isTop=by===ty,isBot=by===ty+th-1;
-        const isLeft=bx===tx,isRight=bx===tx+tw-1;
+        const isTop=by===ty,isBot=by===ty+th-1,isLeft=bx===tx,isRight=bx===tx+tw-1;
         let ch=' ';
-
-        if(isTop&&isLeft)         ch='┌';
-        else if(isTop&&isRight)   ch='┐';
-        else if(isBot&&isLeft)    ch='└';
-        else if(isBot&&isRight)   ch='┘';
-        else if(isTop||isBot)     ch='─';
-        else if(isLeft||isRight)  ch='│';
-        else {
-          const li=by-ty-1;
-          const ci=bx-tx-2; // 1 border + 1 pad
-          const line=desc[li]||'';
+        if(isTop&&isLeft)ch='┌';else if(isTop&&isRight)ch='┐';
+        else if(isBot&&isLeft)ch='└';else if(isBot&&isRight)ch='┘';
+        else if(isTop||isBot)ch='─';else if(isLeft||isRight)ch='│';
+        else{
+          const li=by-ty-1,ci=bx-tx-2,line=desc[li]||'';
           const tc=(ci>=0&&ci<line.length)?line[ci]:' ';
           if(tc!==' '){
-            // per-cell noise threshold — low values reveal first
             const n=fhash(bx,by,nearStop*13+7);
-            if(n<prox*prox){
-              ch=tc; // resolved
-            } else {
-              ch=GIB[hash32(bx,by,tik)%GIB.length]; // gibberish
-            }
+            ch=n<prox*prox?tc:GIB[hash32(bx,by,tik)%GIB.length];
           }
         }
-
         if(ch!==' '){
-          const c=body.col;
-          const alpha=prox;
-          grid[by*GW+bx]={ch,r:Math.floor(c[0]*alpha),g:Math.floor(c[1]*alpha*0.85),b:Math.floor(c[2]*alpha*0.85)};
+          const c=body.col,a=prox;
+          grid[by*GW+bx]={ch,r:Math.floor(c[0]*a),g:Math.floor(c[1]*a*0.85),b:Math.floor(c[2]*a*0.85)};
         }
       }
     }
   }
 
-  // render grid
+  // --- render grid ---
   for(let cy=0;cy<GH;cy++){
     for(let cx=0;cx<GW;cx++){
       const cell=grid[cy*GW+cx];
-      if(cell&&cell.ch!==' '){
-        ctx.fillStyle=`rgb(${cell.r},${cell.g},${cell.b})`;
-        ctx.fillText(cell.ch,cx*CW,cy*CH);
-      }
+      if(cell&&cell.ch!==' '){ctx.fillStyle=`rgb(${cell.r},${cell.g},${cell.b})`;ctx.fillText(cell.ch,cx*CW,cy*CH);}
     }
   }
 
-  // HUD — scroll position indicator
+  // --- atmosphere tint overlay when camera is inside an atmosphere ---
+  // the colour fills the whole canvas, simulating scattering around you
+  for(let bi=1;bi<BODIES.length;bi++){
+    const atm=ATM[bi];if(!atm)continue;
+    const bp=bodyPos[bi];
+    const dx=camPos[0]-bp[0],dy=camPos[1]-bp[1],dz=camPos[2]-bp[2];
+    const dist2=dx*dx+dy*dy+dz*dz;
+    if(dist2<atm.r*atm.r){
+      // depth: 0 at atmosphere edge, 1 at planet surface
+      const depth=1-Math.sqrt(dist2)/atm.r;
+      const a=clamp(atm.str*0.48*(0.25+0.75*depth),0,0.75);
+      const c=atm.col;
+      ctx.fillStyle=`rgba(${c[0]},${c[1]},${c[2]},${a})`;
+      ctx.fillRect(0,0,cvs.width,cvs.height);
+      break;
+    }
+  }
+
+  // --- HUD ---
   const NAMES=['Overview','Sol','Mercury','Venus','Earth','Mars','Jupiter','Saturn','Uranus'];
   ctx.font=`${CH}px 'Courier New',monospace`;
   for(let i=0;i<NAMES.length;i++){
-    const d=Math.abs(scrollPos-i);
-    const a=clamp(1-d*1.4,0.12,1);
-    const R=Math.floor(80*a),G=Math.floor(100*a),B=Math.floor(160*a);
-    ctx.fillStyle=`rgb(${R},${G},${B})`;
-    const prefix=i===nearStop&&prox>0.7?'>':' ';
-    ctx.fillText(prefix+' '+NAMES[i],CW,CH*(i+1));
+    const d=Math.abs(scrollPos/SS-i),a=clamp(1-d*1.4,0.12,1);
+    ctx.fillStyle=`rgb(${Math.floor(80*a)},${Math.floor(100*a)},${Math.floor(160*a)})`;
+    ctx.fillText((i===nearStop&&prox>0.7?'>':' ')+' '+NAMES[i],CW,CH*(i+1));
   }
-
-  // scroll hint (fade out after 3s)
   if(globT<4){
-    const alpha=clamp(1-(globT-2),0,1);
-    if(alpha>0){
-      ctx.fillStyle=`rgba(80,90,130,${alpha*0.7})`;
-      ctx.fillText('scroll to navigate',CW,GH*CH-CH*2);
-    }
+    const a=clamp(1-(globT-2),0,1);
+    if(a>0){ctx.fillStyle=`rgba(80,90,130,${a*0.7})`;ctx.fillText('scroll to navigate',CW,GH*CH-CH*2);}
   }
 
   requestAnimationFrame(frame);
