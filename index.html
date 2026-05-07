@@ -1,86 +1,381 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Micah Sellers</title>
-    <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<title>Solar System</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;overflow:hidden}
+canvas{display:block}
+</style>
 </head>
 <body>
-    <button class="mode-toggle" id="modeToggle">Simple View</button>
-    <div class="name-header">
-        <h1 class="name-title">Micah Sellers</h1>
-        <p class="tagline">under development</p>
-    </div>
-    <div class="main-row">
-        <aside class="contact-panel">
-            <h2 class="contact-heading">Contact</h2>
-            <ul class="contact-list">
-                <li>
-                    <span class="contact-label">Email</span>
-                    <a class="contact-value" href="mailto:micah@example.com">micah@example.com</a>
-                </li>
-                <li>
-                    <span class="contact-label">LinkedIn</span>
-                    <a class="contact-value" href="https://linkedin.com/in/micah-sellers" target="_blank" rel="noopener">micah-sellers</a>
-                </li>
-            </ul>
-        </aside>
-        <div class="scene-area">
-            <div class="scene" id="scene">
-                <p class="hint">
-                    <span>&#8592; &#8594;&ensp;Move</span>
-                    <span>&#8593; &#8595;&ensp;Raise / Lower</span>
-                    <span>Space&ensp;Grab / Drop</span>
-                </p>
-                <canvas id="ropeCanvas"></canvas>
-                <div class="rail"></div>
-                <div class="trolley" id="trolley"></div>
-                <div class="claw" id="claw">
-                    <div class="claw-head"></div>
-                    <div class="claw-fingers">
-                        <div class="finger left"></div>
-                        <div class="finger right"></div>
-                    </div>
-                </div>
-                <div class="pipe-shaft"></div>
-                <div class="zone-sign">drop into hole<br>to navigate</div>
-                <div class="drop-zone" id="dropZone">
-                    <span class="drop-zone-label">drop here</span>
-                </div>
-                <div class="project-preview" id="projectPreview">
-                    <div class="preview-header">
-                        <span class="preview-type" id="previewType"></span>
-                        <span class="preview-name" id="previewName"></span>
-                    </div>
-                    <div class="preview-screen">
-                        <img class="preview-img" id="previewImg" alt="">
-                        <div class="preview-empty" id="previewEmpty">NO PREVIEW</div>
-                    </div>
-                </div>
-            </div>
-            <div class="controls">
-                <div class="control-pad">
-                    <div class="control-top">
-                        <button class="control-btn control-up" data-key="ArrowUp" title="Raise rope">▲</button>
-                        <button class="control-btn control-down" data-key="ArrowDown" title="Lower rope">▼</button>
-                    </div>
-                    <div class="control-bottom">
-                        <button class="control-btn control-left" data-key="ArrowLeft" title="Move left">◄</button>
-                        <button class="control-btn control-grab" data-action="grab" title="Grab / Drop">GRAB</button>
-                        <button class="control-btn control-right" data-key="ArrowRight" title="Move right">►</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <nav class="simple-nav" id="simpleNav">
-        <a class="simple-nav-link" href="about.html">About</a>
-        <a class="simple-nav-link" href="projects.html">Projects</a>
-        <a class="simple-nav-link" href="contact.html">Contact</a>
-        <a class="simple-nav-link" href="resume.html">Resume</a>
-    </nav>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
-    <script src="main.js"></script>
+<canvas id="c"></canvas>
+<script>
+const CW=10,CH=16;
+const cvs=document.getElementById('c');
+const ctx=cvs.getContext('2d');
+let GW,GH;
+
+function resize(){
+  cvs.width=innerWidth;cvs.height=innerHeight;
+  GW=Math.floor(cvs.width/CW);GH=Math.floor(cvs.height/CH);
+}
+resize();
+addEventListener('resize',resize);
+
+// --- vec3 ---
+const add=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
+const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+const mul=(a,s)=>[a[0]*s,a[1]*s,a[2]*s];
+const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const len2=(a)=>dot(a,a);
+const len=(a)=>Math.sqrt(len2(a));
+const norm=(a)=>{const l=len(a);return l<1e-9?[0,1,0]:mul(a,1/l);};
+const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const lerp=(a,b,t)=>a+(b-a)*t;
+const lv=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];
+const clamp=(x,lo,hi)=>Math.max(lo,Math.min(hi,x));
+
+// --- hash ---
+function hash32(x,y,s){
+  let h=(Math.imul(x,374761393)^Math.imul(y,1376312589)^Math.imul(s,2654435761))>>>0;
+  h=Math.imul(h^(h>>>13),1540483477)>>>0;
+  return (h^(h>>>15))>>>0;
+}
+const fhash=(x,y,s)=>hash32(x,y,s)/0xFFFFFFFF;
+
+// --- scene ---
+const RAMP=' .`\'^"-~:;Il!i><+_?][}{1)(|/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$';
+
+const BODIES=[
+  {id:0,name:'Sol',    pos:[0,0,0], r:2.0, orbitR:0,  col:[255,200,80],  cs:'+*@#$%&8!',   sun:true,
+   desc:['THE SUN','Our star','G-type main seq','1.4M km diameter','Surface 5500 C','Core 15 million C','Plasma and fusion']},
+  {id:1,name:'Mercury',pos:[6,0,0], r:0.3, orbitR:6,  col:[180,158,136], cs:'.-:;!|~',   spd:0.746,ph:0,
+   desc:['MERCURY','Smallest planet','No atmosphere','Extreme temps','Iron core inside','Dense and hot','Cratered surface']},
+  {id:2,name:'Venus',  pos:[10,0,0],r:0.55,orbitR:10, col:[230,200,140], cs:'oO0Q@&*',   spd:0.347,ph:1.0,
+   desc:['VENUS','Hottest planet','Thick CO2 air','462C surface','Slow rotation','Retrograde spin','Sulfur clouds thick']},
+  {id:3,name:'Earth',  pos:[14,0,0],r:0.6, orbitR:14, col:[80,150,220],  cs:'+x*=#~.',   spd:0.209,ph:2.0,
+   desc:['EARTH','Our home world','Liquid oceans','Oxygen in air','Plate tectonics','One large moon','Life everywhere']},
+  {id:4,name:'Mars',   pos:[19,0,0],r:0.45,orbitR:19, col:[210,90,70],   cs:'v^<>|/!',   spd:0.132,ph:3.8,
+   desc:['MARS','The red planet','Thin CO2 air','Olympus Mons','Two small moons','Ancient riverbeds','Cold red desert']},
+  {id:5,name:'Jupiter',pos:[38,0,0],r:1.9, orbitR:38, col:[200,175,140], cs:')(-=+~#',   spd:0.047,ph:5.0,
+   desc:['JUPITER','Largest planet','Great Red Spot','95 known moons','Strong radiation','Fast 10hr day','Gas and ice core']},
+  {id:6,name:'Saturn', pos:[60,0,0],r:1.5, orbitR:60, col:[210,190,150], cs:'O0oG@8Q',   spd:0.024,ph:1.5,
+   hasRing:true,ringR1:1.9,ringR2:3.3,
+   desc:['SATURN','Ringed wonder','Ice and rock rings','146 known moons','Hexagonal storm','Low density body','Gas giant twin']},
+  {id:7,name:'Uranus', pos:[85,0,0],r:1.1, orbitR:85, col:[150,215,215], cs:'c<>(){}[]', spd:0.014,ph:4.2,
+   desc:['URANUS','Ice giant blue','Tilted 97 degrees','Rolls on its side','27 known moons','Faint thin rings','Methane blue hue']},
+];
+// mutable current world positions, updated each frame
+const bodyPos=BODIES.map(b=>[...b.pos]);
+
+// camera offset from planet centre and fov for each stop (stops 2-8 follow orbiting planets)
+const STOP_OFF=[ null,          null,        [0,3.5,7], [0,3.5,8], [0,4,9], [0,3.5,8], [0,9,16], [0,9,16], [0,9,16] ];
+const STOP_FOV=[ 60,            46,           44,        44,        44,       44,         48,        48,        48      ];
+
+// maps scroll stop index → body (stop 0 = overview has no body)
+const STOPS=[null,...BODIES];
+
+function getStopPreset(si){
+  if(si===0)return{pos:[42,65,85],tgt:[42,0,0],fov:60};
+  if(si===1)return{pos:[3,4,5],   tgt:[0,0,0], fov:46}; // sun fixed
+  const p=bodyPos[si-1]; // body index = stop-1
+  const o=STOP_OFF[si];
+  return{pos:[p[0]+o[0],p[1]+o[1],p[2]+o[2]],tgt:[...p],fov:STOP_FOV[si]};
+}
+
+function getPreset(s){
+  const i=clamp(Math.floor(s),0,7);
+  const A=getStopPreset(i),B=getStopPreset(Math.min(i+1,8));
+  const f=s-i;
+  return{pos:lv(A.pos,B.pos,f),tgt:lv(A.tgt,B.tgt,f),fov:lerp(A.fov,B.fov,f)};
+}
+
+// --- scroll state ---
+let scrollTgt=0,scrollVel=0,scrollPos=0;
+addEventListener('wheel',e=>{scrollVel+=e.deltaY*0.005;},{passive:true});
+
+// --- camera state ---
+let camPos=[42,65,85];
+let camTgt=[42,0,0];
+let camFov=60;
+
+// --- camera helpers ---
+function buildCam(pos,tgt,fovDeg){
+  const fwd=norm(sub(tgt,pos));
+  const wUp=Math.abs(dot(fwd,[0,1,0]))>0.98?[0,0,-1]:[0,1,0];
+  const rgt=norm(cross(fwd,wUp));
+  const up=cross(rgt,fwd);
+  const fov=fovDeg*Math.PI/180;
+  const aspect=(GW*CW)/(GH*CH);
+  const tanH=Math.tan(fov/2);
+  const tanW=tanH*aspect;
+  return {pos,fwd,rgt,up,tanW,tanH};
+}
+
+function getRay(cx,cy,cam){
+  const u=(cx+0.5)/GW*2-1;
+  const v=1-(cy+0.5)/GH*2;
+  return norm(add(add(cam.fwd,mul(cam.rgt,u*cam.tanW)),mul(cam.up,v*cam.tanH)));
+}
+
+function projectPt(p,cam){
+  const d=sub(p,cam.pos);
+  const fz=dot(d,cam.fwd);
+  if(fz<=0.001)return null;
+  const fx=dot(d,cam.rgt);
+  const fy=dot(d,cam.up);
+  const sx=(fx/(fz*cam.tanW)*0.5+0.5)*GW;
+  const sy=(0.5-fy/(fz*cam.tanH)*0.5)*GH;
+  return[Math.floor(sx),Math.floor(sy)];
+}
+
+// --- intersections ---
+function raySphere(ro,rd,cen,r){
+  const oc=sub(ro,cen);
+  const b=dot(oc,rd);
+  const c=len2(oc)-r*r;
+  const disc=b*b-c;
+  if(disc<0)return -1;
+  const sq=Math.sqrt(disc);
+  let t=-b-sq;
+  if(t<0.001)t=-b+sq;
+  return t<0.001?-1:t;
+}
+
+// horizontal disk intersection (normal=[0,1,0])
+function rayDisk(ro,rd,cenY,r1,r2,cenX,cenZ){
+  if(Math.abs(rd[1])<1e-6)return -1;
+  const t=(cenY-ro[1])/rd[1];
+  if(t<0.001)return -1;
+  const px=ro[0]+rd[0]*t-cenX;
+  const pz=ro[2]+rd[2]*t-cenZ;
+  const d2=px*px+pz*pz;
+  return (d2>=r1*r1&&d2<=r2*r2)?t:-1;
+}
+
+// --- stars (static scatter) ---
+const STARS=[];
+for(let i=0;i<280;i++){
+  STARS.push([fhash(i,0,77),fhash(i,0,88),fhash(i,0,99)]);
+}
+
+let lastT=performance.now(),globT=0;
+
+function frame(now){
+  const dt=Math.min((now-lastT)/1000,0.05);
+  lastT=now; globT+=dt;
+
+  // advance planet orbital positions
+  for(let bi=1;bi<BODIES.length;bi++){
+    const b=BODIES[bi];
+    const a=globT*b.spd+b.ph;
+    bodyPos[bi][0]=Math.cos(a)*b.orbitR;
+    bodyPos[bi][2]=Math.sin(a)*b.orbitR;
+  }
+
+  // scroll physics
+  scrollVel*=Math.exp(-4*dt);
+  scrollTgt+=scrollVel;
+  scrollTgt=clamp(scrollTgt,0,8);
+  if(Math.abs(scrollVel)<0.04){
+    const sn=Math.round(scrollTgt);
+    scrollTgt=lerp(scrollTgt,sn,clamp(dt*3.5,0,1));
+  }
+  scrollPos=lerp(scrollPos,scrollTgt,clamp(1-Math.exp(-5*dt),0,1));
+  scrollPos=clamp(scrollPos,0,8);
+
+  // camera lerp (weighted, inertial)
+  const pr=getPreset(scrollPos);
+  const lk=clamp(1-Math.exp(-2*dt),0,1);
+  camPos=lv(camPos,pr.pos,lk);
+  camTgt=lv(camTgt,pr.tgt,lk);
+  camFov=lerp(camFov,pr.fov,lk);
+
+  ctx.fillStyle='#000';
+  ctx.fillRect(0,0,cvs.width,cvs.height);
+  ctx.font=`${CH}px 'Courier New',monospace`;
+  ctx.textBaseline='top';
+
+  const cam=buildCam(camPos,camTgt,camFov);
+  const N=GW*GH;
+  const grid=new Array(N).fill(null);
+  const occ=new Uint8Array(N); // 1=sphere, 2=ring
+
+  // stars in background
+  for(const [u,v,br] of STARS){
+    const gx=Math.floor(u*GW),gy=Math.floor(v*GH);
+    if(gx>=0&&gx<GW&&gy>=0&&gy<GH){
+      const b=Math.floor(50+br*110);
+      grid[gy*GW+gx]={ch:'.',r:b,g:b,b:b};
+    }
+  }
+
+  // raycasting
+  for(let cy=0;cy<GH;cy++){
+    for(let cx=0;cx<GW;cx++){
+      const rd=getRay(cx,cy,cam);
+      const ro=camPos;
+      let minT=1e9,hitB=null,isRing=false;
+
+      for(const body of BODIES){
+        const bp=bodyPos[body.id];
+        // check physical ring (Saturn)
+        if(body.hasRing){
+          const tR=rayDisk(ro,rd,bp[1],body.ringR1,body.ringR2,bp[0],bp[2]);
+          if(tR>0&&tR<minT){
+            const tS=raySphere(ro,rd,bp,body.r);
+            if(tS<0||tR<tS){minT=tR;hitB=body;isRing=true;}
+          }
+        }
+        // sphere
+        const tS=raySphere(ro,rd,bp,body.r);
+        if(tS>0&&tS<minT){minT=tS;hitB=body;isRing=false;}
+      }
+
+      if(!hitB)continue;
+      const idx=cy*GW+cx;
+      const hbp=bodyPos[hitB.id];
+
+      if(isRing){
+        const rp=add(ro,mul(rd,minT));
+        const toSun=norm(sub(bodyPos[0],rp));
+        const d=clamp(0.15+0.85*Math.abs(toSun[1]),0.1,1);
+        const rc='=-~.oO*+';
+        const h=fhash(cx,cy,hitB.id+100);
+        const ch=rc[Math.floor(h*rc.length)];
+        const c=hitB.col;
+        grid[idx]={ch,r:Math.floor(c[0]*d*0.7),g:Math.floor(c[1]*d*0.7),b:Math.floor(c[2]*d*0.7)};
+        occ[idx]=2;
+      } else {
+        const hp=add(ro,mul(rd,minT));
+        const nrm=norm(sub(hp,hbp));
+        const toSun=norm(sub(bodyPos[0],hp));
+        let brightness;
+        if(hitB.sun){
+          brightness=0.55+0.45*Math.abs(nrm[1]);
+          brightness*=0.88+0.12*fhash(cx,cy,Math.floor(globT*10));
+        } else {
+          brightness=clamp(0.2+0.8*dot(nrm,toSun),0,1);
+        }
+        const ri=Math.floor(brightness*(RAMP.length-1));
+        const base=RAMP[ri];
+        const h=fhash(cx,cy,hitB.id);
+        const cs=hitB.cs;
+        let ch=(brightness>0.07&&h<0.38)?cs[Math.floor(h/0.38*cs.length)]:base;
+        if(!hitB.sun&&ch===' ')ch='.'; // planets never vanish
+        const c=hitB.col;
+        grid[idx]={ch,r:Math.floor(c[0]*brightness),g:Math.floor(c[1]*brightness),b:Math.floor(c[2]*brightness)};
+        occ[idx]=1;
+      }
+    }
+  }
+
+  // orbit ring post-pass (project circle samples, write to unoccupied cells)
+  for(const body of BODIES){
+    if(!body.orbitR)continue;
+    const nSamples=Math.max(200,Math.ceil(body.orbitR*14));
+    for(let i=0;i<nSamples;i++){
+      const a=i/nSamples*Math.PI*2;
+      const p=[Math.cos(a)*body.orbitR,0,Math.sin(a)*body.orbitR];
+      const proj=projectPt(p,cam);
+      if(!proj)continue;
+      const[gx,gy]=proj;
+      if(gx<0||gx>=GW||gy<0||gy>=GH)continue;
+      const idx=gy*GW+gx;
+      if(!occ[idx])grid[idx]={ch:'.',r:38,g:38,b:58};
+    }
+  }
+
+  // --- text overlay for planet stops ---
+  const nearStop=Math.round(scrollPos);
+  const prox=clamp(1-Math.abs(scrollPos-nearStop)*2.5,0,1);
+
+  if(nearStop>=1&&nearStop<=8&&prox>0.02){
+    const body=STOPS[nearStop];
+    const desc=body.desc;
+    const maxLen=desc.reduce((m,l)=>Math.max(m,l.length),0);
+    const tw=maxLen+4; // 2 border + 1 pad each side
+    const th=desc.length+2; // 2 border rows
+    const tx=GW-tw-2;
+    const ty=Math.floor((GH-th)/2);
+    const tik=Math.floor(globT*7);
+    const GIB='!@#$%^&*=+[]{}|;:<>?/~`ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrst';
+
+    for(let by=ty;by<ty+th;by++){
+      for(let bx=tx;bx<tx+tw;bx++){
+        if(bx<0||bx>=GW||by<0||by>=GH)continue;
+        const isTop=by===ty,isBot=by===ty+th-1;
+        const isLeft=bx===tx,isRight=bx===tx+tw-1;
+        let ch=' ';
+
+        if(isTop&&isLeft)         ch='┌';
+        else if(isTop&&isRight)   ch='┐';
+        else if(isBot&&isLeft)    ch='└';
+        else if(isBot&&isRight)   ch='┘';
+        else if(isTop||isBot)     ch='─';
+        else if(isLeft||isRight)  ch='│';
+        else {
+          const li=by-ty-1;
+          const ci=bx-tx-2; // 1 border + 1 pad
+          const line=desc[li]||'';
+          const tc=(ci>=0&&ci<line.length)?line[ci]:' ';
+          if(tc!==' '){
+            // per-cell noise threshold — low values reveal first
+            const n=fhash(bx,by,nearStop*13+7);
+            if(n<prox*prox){
+              ch=tc; // resolved
+            } else {
+              ch=GIB[hash32(bx,by,tik)%GIB.length]; // gibberish
+            }
+          }
+        }
+
+        if(ch!==' '){
+          const c=body.col;
+          const alpha=prox;
+          grid[by*GW+bx]={ch,r:Math.floor(c[0]*alpha),g:Math.floor(c[1]*alpha*0.85),b:Math.floor(c[2]*alpha*0.85)};
+        }
+      }
+    }
+  }
+
+  // render grid
+  for(let cy=0;cy<GH;cy++){
+    for(let cx=0;cx<GW;cx++){
+      const cell=grid[cy*GW+cx];
+      if(cell&&cell.ch!==' '){
+        ctx.fillStyle=`rgb(${cell.r},${cell.g},${cell.b})`;
+        ctx.fillText(cell.ch,cx*CW,cy*CH);
+      }
+    }
+  }
+
+  // HUD — scroll position indicator
+  const NAMES=['Overview','Sol','Mercury','Venus','Earth','Mars','Jupiter','Saturn','Uranus'];
+  ctx.font=`${CH}px 'Courier New',monospace`;
+  for(let i=0;i<NAMES.length;i++){
+    const d=Math.abs(scrollPos-i);
+    const a=clamp(1-d*1.4,0.12,1);
+    const R=Math.floor(80*a),G=Math.floor(100*a),B=Math.floor(160*a);
+    ctx.fillStyle=`rgb(${R},${G},${B})`;
+    const prefix=i===nearStop&&prox>0.7?'>':' ';
+    ctx.fillText(prefix+' '+NAMES[i],CW,CH*(i+1));
+  }
+
+  // scroll hint (fade out after 3s)
+  if(globT<4){
+    const alpha=clamp(1-(globT-2),0,1);
+    if(alpha>0){
+      ctx.fillStyle=`rgba(80,90,130,${alpha*0.7})`;
+      ctx.fillText('scroll to navigate',CW,GH*CH-CH*2);
+    }
+  }
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
 </body>
 </html>

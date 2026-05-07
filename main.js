@@ -622,15 +622,6 @@ function tick() {
     requestAnimationFrame(tick);
 }
 
-// ── Mode toggle ────────────────────────────────────────────────────────────
-const modeToggleBtn = document.getElementById('modeToggle');
-modeToggleBtn.addEventListener('click', () => {
-    document.body.classList.toggle('simple-mode');
-    modeToggleBtn.textContent = document.body.classList.contains('simple-mode')
-        ? 'Fun View'
-        : 'Simple View';
-});
-
 tick();
 
 // ── Responsive scene scaling ───────────────────────────────────────────────
