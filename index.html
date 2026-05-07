@@ -257,7 +257,7 @@ function frame(now){
           // ~10% of surface is sunspot (dark cell)
           const isSunspot=gran<0.10;
           br=isSunspot
-            ? clamp(0.22+gran*2.2,0,0.48)          // dark spot: 0.22–0.44
+            ? clamp(0.04+gran*0.8,0,0.18)          // dark spot: very dim
             : clamp(limb*(0.80+0.20*gran),0,1);    // bright cell: 0.78–1.00
           // subtle plasma shimmer (slow flicker)
           br=clamp(br*(0.94+0.06*fhash(cx,cy,Math.floor(globT*5))),0,1);
@@ -270,7 +270,7 @@ function frame(now){
         if(!hitB.sun&&ch===' ')ch='.';
         const c=hitB.col;
         grid[idx]={ch,r:Math.floor(c[0]*br),g:Math.floor(c[1]*br),b:Math.floor(c[2]*br)};
-        occ[idx]=1;
+        occ[idx]=hitB.sun?4:1;
       }
     }
   }
@@ -319,32 +319,64 @@ function frame(now){
     }
   }
 
-  // --- sun rays post-pass ---
-  // screen-space cosine-lobe rays emanating from the sun's projected position
-  const sunProj=projectPt(bodyPos[0],cam);
-  if(sunProj){
-    const[spx,spy]=sunProj;
-    const N_RAYS=16,RAY_CS='*+.~`';
-    const rotOff=globT*0.04;
-    for(let cy=0;cy<GH;cy++){
-      for(let cx=0;cx<GW;cx++){
-        const idx=cy*GW+cx;
-        if(occ[idx])continue;
-        const pxDx=(cx-spx)*CW,pxDy=(cy-spy)*CH;
-        const dist=Math.sqrt(pxDx*pxDx+pxDy*pxDy);
-        if(dist<8||dist>320)continue;
-        const angle=Math.atan2(pxDy,pxDx);
-        // |cos(angle * N/2)|^8 gives exactly N_RAYS lobes per full circle
-        const lobe=Math.pow(Math.abs(Math.cos((angle-rotOff)*N_RAYS/2)),8);
-        if(lobe<0.06)continue;
-        const nearFade=clamp((dist-8)/40,0,1);
-        const farFade=clamp(1-dist/320,0,1);
-        const br=lobe*nearFade*farFade*0.9;
-        if(br<0.04)continue;
-        const h=fhash(cx,cy,777);
-        const ch=RAY_CS[Math.floor(h*RAY_CS.length)];
-        const sc=BODIES[0].col;
-        grid[idx]={ch,r:Math.floor(sc[0]*br),g:Math.floor(sc[1]*br*0.75),b:Math.floor(sc[2]*br*0.35)};
+  // --- solar flares (3D volumetric) ---
+  // Each flare is a thin tapered cylinder from sun surface outward in a 3D direction.
+  // Camera ray closest-approach to each flare line determines visibility.
+  // Sinusoidal width constrictions along the length give a stringy/translucent look.
+  {
+    const sunPos=bodyPos[0];
+    const sunR=BODIES[0].r;
+    const N_FL=12,FL_LEN=14,FL_W0=1.0,FL_W1=0.22;
+    const FLARE_CS="|:;',.~-";
+    // build flare directions and per-flare pulsing extents
+    const fDirs=[],fLens=[];
+    for(let fi=0;fi<N_FL;fi++){
+      const base=(fi/N_FL)*Math.PI*2;
+      const azim=base+globT*(0.03+fhash(fi,0,17)*0.02)+Math.sin(globT*0.25+fi*1.9)*0.18;
+      const elev=(fhash(fi,0,91)-0.5)*1.2;
+      const cosE=Math.cos(elev);
+      fDirs.push([Math.cos(azim)*cosE,Math.sin(elev),Math.sin(azim)*cosE]);
+      // each flare pulses out and back independently
+      const ph=fhash(fi,0,53)*Math.PI*2;
+      const spd=0.12+fhash(fi,0,71)*0.18;
+      const ext=0.5+0.5*Math.sin(globT*spd+ph); // 0=retracted, 1=full
+      fLens.push(sunR+(FL_LEN-sunR)*ext);
+    }
+    for(let gy=0;gy<GH;gy++){
+      for(let gx=0;gx<GW;gx++){
+        const idx=gy*GW+gx;
+        // allow rendering over sun surface (occ=4) but not over solid planets/rings
+        if(occ[idx] && occ[idx]!==4)continue;
+        const rd=getRay(gx,gy,cam);
+        const wx=camPos[0]-sunPos[0],wy=camPos[1]-sunPos[1],wz=camPos[2]-sunPos[2];
+        let bestStr=0,bestFi=-1;
+        for(let fi=0;fi<N_FL;fi++){
+          const fd=fDirs[fi];
+          const effLen=fLens[fi];
+          const rdfd=rd[0]*fd[0]+rd[1]*fd[1]+rd[2]*fd[2];
+          const denom=1-rdfd*rdfd;
+          if(denom<1e-6)continue;
+          const wrd=wx*rd[0]+wy*rd[1]+wz*rd[2];
+          const wfd=wx*fd[0]+wy*fd[1]+wz*fd[2];
+          const s=(wfd-wrd*rdfd)/denom;
+          if(s<sunR||s>effLen)continue;
+          const t=s*rdfd-wrd;
+          if(t<0.001)continue;
+          const ex=wx+t*rd[0]-s*fd[0],ey=wy+t*rd[1]-s*fd[1],ez=wz+t*rd[2]-s*fd[2];
+          const approachD=Math.sqrt(ex*ex+ey*ey+ez*ez);
+          const frac=(s-sunR)/(effLen-sunR);
+          const width=lerp(FL_W0,FL_W1,frac)*(0.55+0.45*Math.sin(frac*9+globT*0.8+fi*2.3));
+          if(approachD>width)continue;
+          const str=(1-approachD/width)*(1-frac*0.5);
+          if(str>bestStr){bestStr=str;bestFi=fi;}
+        }
+        if(bestStr>0.08){
+          const br=bestStr*0.85;
+          const h=fhash(gx,gy,555+bestFi);
+          const ch=FLARE_CS[Math.floor(h*FLARE_CS.length)];
+          const sc=BODIES[0].col;
+          grid[idx]={ch,r:Math.floor(sc[0]*br),g:Math.floor(sc[1]*br*0.65),b:Math.floor(sc[2]*br*0.25)};
+        }
       }
     }
   }
