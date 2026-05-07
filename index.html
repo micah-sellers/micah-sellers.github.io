@@ -6,7 +6,7 @@
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#000;overflow:hidden}
-canvas{display:block}
+canvas{display:block;cursor:default}
 </style>
 </head>
 <body>
@@ -40,26 +40,37 @@ function hash32(x,y,s){
 }
 const fhash=(x,y,s)=>hash32(x,y,s)/0xFFFFFFFF;
 
+// smooth trilinear noise: smoothstep-interpolated hash on integer lattice
+function sNoise(x,y,z){
+  const ix=Math.floor(x),iy=Math.floor(y),iz=Math.floor(z);
+  const fx=x-ix,fy=y-iy,fz=z-iz;
+  const ux=fx*fx*(3-2*fx),uy=fy*fy*(3-2*fy),uz=fz*fz*(3-2*fz);
+  return lerp(lerp(lerp(fhash(ix,iy,iz),    fhash(ix+1,iy,iz),   ux),
+                   lerp(fhash(ix,iy+1,iz),  fhash(ix+1,iy+1,iz), ux),uy),
+              lerp(lerp(fhash(ix,iy,iz+1),  fhash(ix+1,iy,iz+1), ux),
+                   lerp(fhash(ix,iy+1,iz+1),fhash(ix+1,iy+1,iz+1),ux),uy),uz);
+}
+
 const RAMP=' .`\'^"-~:;Il!i><+_?][}{1)(|/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$';
 
 // --- scene bodies ---
 const BODIES=[
   {id:0,name:'Sol',    pos:[0,0,0],  r:6.0, orbitR:0,   col:[255,200,80],  cs:'*@#$%&8!+~',  sun:true,
    desc:['THE SUN','Our star','G-type main seq','1.4M km diameter','Surface 5500 C','Core 15 million C','Plasma and fusion']},
-  {id:1,name:'Mercury',pos:[18,0,0], r:0.3, orbitR:18,  col:[180,158,136], cs:'.-:;!|~',   spd:0.746,ph:0,
+  {id:1,name:'Mercury',pos:[18,0,0], r:0.3, orbitR:18,  col:[180,158,136], cs:'.-:;!|~',   spd:0.093,ph:0,
    desc:['MERCURY','Smallest planet','No atmosphere','Extreme temps','Iron core inside','Dense and hot','Cratered surface']},
-  {id:2,name:'Venus',  pos:[30,0,0], r:0.55,orbitR:30,  col:[230,200,140], cs:'oO0Q@&*',   spd:0.347,ph:1.0,
+  {id:2,name:'Venus',  pos:[30,0,0], r:0.55,orbitR:30,  col:[230,200,140], cs:'oO0Q@&*',   spd:0.044,ph:1.0,
    desc:['VENUS','Hottest planet','Thick CO2 air','462C surface','Slow rotation','Retrograde spin','Sulfur clouds thick']},
-  {id:3,name:'Earth',  pos:[42,0,0], r:0.6, orbitR:42,  col:[80,150,220],  cs:'+x*=#~.',   spd:0.209,ph:2.0,
+  {id:3,name:'Earth',  pos:[42,0,0], r:0.6, orbitR:42,  col:[80,150,220],  cs:'+x*=#~.',   spd:0.026,ph:2.0,
    desc:['EARTH','Our home world','Liquid oceans','Oxygen in air','Plate tectonics','One large moon','Life everywhere']},
-  {id:4,name:'Mars',   pos:[57,0,0], r:0.45,orbitR:57,  col:[210,90,70],   cs:'v^<>|/!',   spd:0.132,ph:3.8,
+  {id:4,name:'Mars',   pos:[57,0,0], r:0.45,orbitR:57,  col:[210,90,70],   cs:'v^<>|/!',   spd:0.0165,ph:3.8,
    desc:['MARS','The red planet','Thin CO2 air','Olympus Mons','Two small moons','Ancient riverbeds','Cold red desert']},
-  {id:5,name:'Jupiter',pos:[114,0,0],r:1.9, orbitR:114, col:[200,175,140], cs:')(-=+~#',   spd:0.047,ph:5.0,
+  {id:5,name:'Jupiter',pos:[114,0,0],r:1.9, orbitR:114, col:[200,175,140], cs:')(-=+~#',   spd:0.012,ph:5.0,
    desc:['JUPITER','Largest planet','Great Red Spot','95 known moons','Strong radiation','Fast 10hr day','Gas and ice core']},
-  {id:6,name:'Saturn', pos:[180,0,0],r:1.5, orbitR:180, col:[210,190,150], cs:'O0oG@8Q',   spd:0.024,ph:1.5,
+  {id:6,name:'Saturn', pos:[180,0,0],r:1.5, orbitR:180, col:[210,190,150], cs:'O0oG@8Q',   spd:0.006,ph:1.5,
    hasRing:true,ringR1:1.9,ringR2:3.3,
    desc:['SATURN','Ringed wonder','Ice and rock rings','146 known moons','Hexagonal storm','Low density body','Gas giant twin']},
-  {id:7,name:'Uranus', pos:[255,0,0],r:1.1, orbitR:255, col:[150,215,215], cs:'c<>(){}[]', spd:0.014,ph:4.2,
+  {id:7,name:'Uranus', pos:[255,0,0],r:1.1, orbitR:255, col:[150,215,215], cs:'c<>(){}[]', spd:0.0035,ph:4.2,
    desc:['URANUS','Ice giant blue','Tilted 97 degrees','Rolls on its side','27 known moons','Faint thin rings','Methane blue hue']},
 ];
 const bodyPos=BODIES.map(b=>[...b.pos]);
@@ -68,13 +79,13 @@ const bodyPos=BODIES.map(b=>[...b.pos]);
 // r hugs the planet (≈1.2-1.3× planet radius) for a sharp sphere look
 const ATM=[
   null,
-  {r:0.38, col:[200,175,150], str:0.30}, // Mercury  planet r=0.30
-  {r:0.70, col:[220,190,110], str:0.90}, // Venus    planet r=0.55
-  {r:0.76, col:[ 60,130,255], str:0.75}, // Earth    planet r=0.60
-  {r:0.57, col:[205,110, 70], str:0.45}, // Mars     planet r=0.45
-  {r:2.38, col:[195,165,125], str:0.80}, // Jupiter  planet r=1.90
-  {r:1.88, col:[205,185,145], str:0.75}, // Saturn   planet r=1.50
-  {r:1.36, col:[ 80,210,210], str:0.80}, // Uranus   planet r=1.10
+  null, // Mercury - no atmosphere
+  {r:0.62, col:[220,190,110], str:0.90}, // Venus    planet r=0.55, +0.07
+  {r:0.68, col:[ 60,130,255], str:0.75}, // Earth    planet r=0.60, +0.08
+  {r:0.51, col:[205,110, 70], str:0.45}, // Mars     planet r=0.45, +0.06
+  null, // Jupiter - no atmosphere
+  null, // Saturn - no atmosphere
+  null, // Uranus - no atmosphere
 ];
 
 // stop index → BODIES index
@@ -82,16 +93,19 @@ const STOPS=[null,...BODIES];
 
 // each planet stop positions camera INSIDE its atmosphere, looking at planet center
 // po: offset from planet centre — must satisfy: planet.r < |po| < atm.r
+// camera-to-planet offsets for planet stops.
+// these are world-space offsets from the planet center; larger distances keep the planet
+// in frame even when the camera position lags by ~1 unit during fast orbital movement.
 const STOP_VIEW=[
-  null,                        // 0 overview
-  null,                        // 1 sun
-  {po:[0,0.33,0.17], fov:72}, // 2 mercury  |po|=0.371  atm=0.38  r=0.30 ✓
-  {po:[0,0.60,0.30], fov:72}, // 3 venus    |po|=0.671  atm=0.70  r=0.55 ✓
-  {po:[0,0.65,0.33], fov:72}, // 4 earth    |po|=0.729  atm=0.76  r=0.60 ✓
-  {po:[0,0.49,0.24], fov:72}, // 5 mars     |po|=0.546  atm=0.57  r=0.45 ✓
-  {po:[0,2.10,1.00], fov:72}, // 6 jupiter  |po|=2.327  atm=2.38  r=1.90 ✓
-  {po:[0,1.68,0.80], fov:72}, // 7 saturn   |po|=1.861  atm=1.88  r=1.50 ✓
-  {po:[0,1.20,0.57], fov:72}, // 8 uranus   |po|=1.329  atm=1.36  r=1.10 ✓
+  null,                         // 0 overview
+  null,                         // 1 sun
+  {po:[0.5, 0.5, 0.325], fov:60},  // 2 mercury  offset right
+  {po:[0.5, 0.875, 0.55], fov:58},  // 3 venus    offset right
+  {po:[0.5, 0.95, 0.6], fov:58},  // 4 earth    offset right
+  {po:[0.5, 0.75, 0.475], fov:58},  // 5 mars     offset right
+  {po:[1.0, 3.0, 1.875], fov:55},  // 6 jupiter  offset right
+  {po:[1.0, 2.375, 1.5], fov:55},  // 7 saturn   offset right
+  {po:[1.0, 1.75, 1.1], fov:55},  // 8 uranus   offset right
 ];
 
 // scroll: each stop is STOP_SPACING units apart so reaching a planet takes a few scrolls
@@ -99,7 +113,7 @@ const SS=5; // stop spacing
 const SMAX=8*SS; // 40
 
 function getStopPreset(si){
-  if(si===0)return{pos:[130,230,310],tgt:[130,0,0],fov:62};
+  if(si===0)return{pos:[130,100,130],tgt:[130,0,0],fov:62};
   if(si===1)return{pos:[9,12,15],   tgt:[0,0,0], fov:50};
   const p=bodyPos[si-1]; // body index = stop index - 1
   const v=STOP_VIEW[si];
@@ -115,12 +129,45 @@ function getPreset(s){
   return{pos:lv(A.pos,B.pos,f),tgt:lv(A.tgt,B.tgt,f),fov:lerp(A.fov,B.fov,f)};
 }
 
-// scroll state — with dt integration, sensitivity 0.035 ≈ 1 unit/notch → ~5 notches/stop
-let scrollTgt=0,scrollVel=0,scrollPos=0;
-addEventListener('wheel',e=>{scrollVel+=e.deltaY*0.035;},{passive:true});
+// scroll state
+// scrollTgt is always snapped to a stop (integer * SS).
+// scrollAccum accumulates raw wheel input; must exceed DEAD_THRESH to advance one stop,
+// creating a dwell zone so the camera doesn't fly off with a single scroll.
+let scrollTgt=0,scrollPos=0,scrollAccum=0;
+const DEAD_THRESH=4;
+addEventListener('wheel',e=>{
+  const delta=e.deltaY*0.035;
+  // reset accumulator on direction reversal so overshooting doesn't carry through
+  if(scrollAccum!==0&&Math.sign(delta)!==Math.sign(scrollAccum))scrollAccum=0;
+  scrollAccum+=delta;
+  if(scrollAccum>DEAD_THRESH){scrollTgt=clamp(scrollTgt+SS,0,SMAX);scrollAccum=0;}
+  else if(scrollAccum<-DEAD_THRESH){scrollTgt=clamp(scrollTgt-SS,0,SMAX);scrollAccum=0;}
+},{passive:true});
 
-// camera state (smoothly lerped)
-let camPos=[130,230,310],camTgt=[130,0,0],camFov=62;
+// camera state
+let camPos=[130,100,130],camTgt=[130,0,0],camFov=62;
+let lastCam=null; // saved each frame for click hit-testing
+
+// click: fly directly to clicked planet or sun
+cvs.addEventListener('click',e=>{
+  if(!lastCam)return;
+  const rect=cvs.getBoundingClientRect();
+  const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+  for(let bi=0;bi<BODIES.length;bi++){
+    const proj=projectPt(bodyPos[bi],lastCam);if(!proj)continue;
+    const px=(proj[0]+0.5)*CW,py=(proj[1]+0.5)*CH;
+    const d2=(mx-px)**2+(my-py)**2;
+    // screen-space hit radius: projected sphere radius, minimum 20px
+    const viewDist=Math.max(0.1,len(sub(bodyPos[bi],lastCam.pos)));
+    const screenR=Math.max(20,BODIES[bi].r/viewDist*(GW*CW*0.5)/lastCam.tanW);
+    if(d2<screenR*screenR){
+      // sun → stop 1; planets → stop bi+1
+      scrollTgt=clamp(bi===0?SS:(bi+1)*SS,0,SMAX);
+      scrollAccum=0;
+      break;
+    }
+  }
+});
 
 // --- camera ---
 function buildCam(pos,tgt,fovDeg){
@@ -179,28 +226,51 @@ function frame(now){
     bodyPos[bi][2]=Math.sin(a)*b.orbitR;
   }
 
-  // scroll physics — spring-damper system, dt-integrated so fps doesn't affect speed
-  const sn=Math.round(scrollTgt/SS)*SS;
-  scrollVel+=(sn-scrollTgt)*4*dt;   // spring toward nearest stop
-  scrollVel*=Math.exp(-3.5*dt);     // friction damping
-  scrollTgt+=scrollVel*dt;          // integrate with dt (fixes frame-rate dependency)
-  scrollTgt=clamp(scrollTgt,0,SMAX);
-  scrollPos=lerp(scrollPos,scrollTgt,clamp(dt*10,0,1)); // fast visual follow
+  // scrollPos smoothly chases the discrete scrollTgt
+  scrollPos=lerp(scrollPos,scrollTgt,1-Math.exp(-2.2*dt));
   scrollPos=clamp(scrollPos,0,SMAX);
 
-  // inertial camera lerp — slow half-life (~0.7s) for weighted feel
-  const pr=getPreset(scrollPos);
-  const lk=clamp(1-Math.exp(-1.4*dt),0,1);
-  camPos=lv(camPos,pr.pos,lk);
-  camTgt=lv(camTgt,pr.tgt,lk);
-  camFov=lerp(camFov,pr.fov,lk);
+  // camera update — two modes:
+  //   TRANSIT: scrollPos is between stops → lerp through the interpolated path
+  //   AT STOP: scrollPos has settled on a planet stop → directly track the planet
+  //            camTgt is set exactly to the planet's current world position so the
+  //            camera always points at the planet regardless of orbital speed.
+  const sf=scrollPos/SS;
+  const nearI=Math.round(sf);
+  const distFS=Math.abs(sf-nearI);
+  const atPlanetStop=nearI>=2&&nearI<=8&&distFS<0.18;
+  const atSunStop=nearI===1&&distFS<0.18;
+
+  if(atPlanetStop){
+    const planet=bodyPos[nearI-1]; // current world position of the planet
+    const v=STOP_VIEW[nearI];
+    // position offset is fixed relative to planet center — recompute every frame
+    const tp=[planet[0]+v.po[0],planet[1]+v.po[1],planet[2]+v.po[2]];
+    const lkP=clamp(1-Math.exp(-10*dt),0,1); // fast position approach
+    camPos=lv(camPos,tp,lkP);
+    camTgt=[...planet];  // exact: no lerp lag on look direction
+    camFov=lerp(camFov,v.fov,lkP);
+  }else if(atSunStop){
+    const preset=getStopPreset(1);
+    const lkS=clamp(1-Math.exp(-3*dt),0,1);
+    camPos=lv(camPos,preset.pos,lkS);
+    camTgt=lv(camTgt,preset.tgt,lkS);
+    camFov=lerp(camFov,preset.fov,lkS);
+  }else{
+    // transit between stops: interpolate the path, slow enough to feel cinematic
+    const pr=getPreset(scrollPos);
+    const lk=clamp(1-Math.exp(-2*dt),0,1);
+    camPos=lv(camPos,pr.pos,lk);
+    camTgt=lv(camTgt,pr.tgt,lk);
+    camFov=lerp(camFov,pr.fov,lk);
+  }
 
   ctx.fillStyle='#000';
   ctx.fillRect(0,0,cvs.width,cvs.height);
   ctx.font=`${CH}px 'Courier New',monospace`;
   ctx.textBaseline='top';
 
-  const cam=buildCam(camPos,camTgt,camFov);
+  const cam=buildCam(camPos,camTgt,camFov);lastCam=cam;
   const N=GW*GH;
   const grid=new Array(N).fill(null);
   const occ=new Uint8Array(N); // 1=planet 2=ring 3=atm
@@ -244,33 +314,55 @@ function frame(now){
       }else{
         const hp=add(ro,mul(rd,minT)),nrm=norm(sub(hp,hbp));
         const toSun=norm(sub(bodyPos[0],hp));
-        let br;
+        let br,cr,cg,cb;
         if(hitB.sun){
-          // two-scale granulation anchored to surface normal (stable texture on sphere)
-          const s1=5,s2=13;
-          const g1=fhash((nrm[0]*s1+40)|0,(nrm[1]*s1+40)|0,(nrm[2]*s1+40)|0);
-          const g2=fhash((nrm[0]*s2+80)|0,(nrm[1]*s2+80)|0,(nrm[2]*s2+80)|0);
-          const gran=g1*0.6+g2*0.4; // 0–1
-          // limb darkening: edge of disk is slightly cooler
+          // multi-octave smooth noise height field — slower flow on each octave axis
+          const ft=globT*0.04;
+          const sc1=3.5,sc2=7.0,sc3=14.0;
+          const n1=sNoise(nrm[0]*sc1+ft,     nrm[1]*sc1,          nrm[2]*sc1);
+          const n2=sNoise(nrm[0]*sc2,         nrm[1]*sc2+ft*1.3,   nrm[2]*sc2);
+          const n3=sNoise(nrm[0]*sc3,         nrm[1]*sc3,          nrm[2]*sc3+ft*0.7);
+          const ht=clamp(n1*0.55+n2*0.30+n3*0.15,0,1);
+          // limb darkening
           const facing=Math.max(0,dot(nrm,norm(sub(camPos,hbp))));
-          const limb=0.78+0.22*facing;
-          // ~10% of surface is sunspot (dark cell)
-          const isSunspot=gran<0.10;
-          br=isSunspot
-            ? clamp(0.04+gran*0.8,0,0.18)          // dark spot: very dim
-            : clamp(limb*(0.80+0.20*gran),0,1);    // bright cell: 0.78–1.00
-          // subtle plasma shimmer (slow flicker)
-          br=clamp(br*(0.94+0.06*fhash(cx,cy,Math.floor(globT*5))),0,1);
+          const limb=0.75+0.25*facing;
+          br=clamp(ht*limb,0,1);
+          // color: low height = deep orange-red, high = bright yellow-white
+          cr=Math.floor(lerp(180,255,ht)*limb);
+          cg=Math.floor(lerp(55,225,ht)*limb);
+          cb=Math.floor(lerp(0,100,ht)*limb);
         }else{
-          br=clamp(0.2+0.8*dot(nrm,toSun),0,1);
+          const diffuse=clamp(0.2+0.8*dot(nrm,toSun),0,1);
+          // wave interference ripples for gas giants (ids 5,6,7)
+          if(hitB.id>=5&&hitB.id<=7){
+            const ry=globT*0.006+hitB.id*1.1; // very slow drift per planet
+            const GSRCS=[
+              [Math.cos(ry),     0,Math.sin(ry)    ],
+              [Math.cos(ry+1.57),0,Math.sin(ry+1.57)],
+              [Math.cos(ry+3.14),0,Math.sin(ry+3.14)],
+              [Math.cos(ry+4.71),0,Math.sin(ry+4.71)],
+            ];
+            const lat=Math.asin(clamp(nrm[1],-1,1));
+            let wave=Math.sin(lat*13-globT*0.06)*0.55; // primary horizontal bands
+            for(let si=0;si<GSRCS.length;si++){
+              const s=GSRCS[si];
+              const cosA=clamp(nrm[0]*s[0]+nrm[1]*s[1]+nrm[2]*s[2],-1,1);
+              wave+=Math.sin(Math.acos(cosA)*8-globT*(0.08+si*0.015)+si*0.79)*0.11;
+            }
+            wave=clamp(wave,-1,1);
+            br=clamp(diffuse*(0.82+0.22*wave),0,1);
+          }else{
+            br=diffuse;
+          }
+          const c=hitB.col;
+          cr=Math.floor(c[0]*br);cg=Math.floor(c[1]*br);cb=Math.floor(c[2]*br);
         }
         const ri=Math.floor(br*(RAMP.length-1)),base=RAMP[ri];
         const h=fhash(cx,cy,hitB.id),cs=hitB.cs;
         let ch=(br>0.07&&h<0.38)?cs[Math.floor(h/0.38*cs.length)]:base;
         if(!hitB.sun&&ch===' ')ch='.';
-        const c=hitB.col;
-        grid[idx]={ch,r:Math.floor(c[0]*br),g:Math.floor(c[1]*br),b:Math.floor(c[2]*br)};
-        occ[idx]=hitB.sun?4:1;
+        grid[idx]={ch,r:cr,g:cg,b:cb};
+        occ[idx]=1;
       }
     }
   }
@@ -316,68 +408,6 @@ function frame(now){
       if(gx<0||gx>=GW||gy<0||gy>=GH)continue;
       const idx=gy*GW+gx;
       if(!occ[idx])grid[idx]={ch:'.',r:38,g:38,b:58};
-    }
-  }
-
-  // --- solar flares (3D volumetric) ---
-  // Each flare is a thin tapered cylinder from sun surface outward in a 3D direction.
-  // Camera ray closest-approach to each flare line determines visibility.
-  // Sinusoidal width constrictions along the length give a stringy/translucent look.
-  {
-    const sunPos=bodyPos[0];
-    const sunR=BODIES[0].r;
-    const N_FL=12,FL_LEN=14,FL_W0=1.0,FL_W1=0.22;
-    const FLARE_CS="|:;',.~-";
-    // build flare directions and per-flare pulsing extents
-    const fDirs=[],fLens=[];
-    for(let fi=0;fi<N_FL;fi++){
-      const base=(fi/N_FL)*Math.PI*2;
-      const azim=base+globT*(0.03+fhash(fi,0,17)*0.02)+Math.sin(globT*0.25+fi*1.9)*0.18;
-      const elev=(fhash(fi,0,91)-0.5)*1.2;
-      const cosE=Math.cos(elev);
-      fDirs.push([Math.cos(azim)*cosE,Math.sin(elev),Math.sin(azim)*cosE]);
-      // each flare pulses out and back independently
-      const ph=fhash(fi,0,53)*Math.PI*2;
-      const spd=0.12+fhash(fi,0,71)*0.18;
-      const ext=0.5+0.5*Math.sin(globT*spd+ph); // 0=retracted, 1=full
-      fLens.push(sunR+(FL_LEN-sunR)*ext);
-    }
-    for(let gy=0;gy<GH;gy++){
-      for(let gx=0;gx<GW;gx++){
-        const idx=gy*GW+gx;
-        // allow rendering over sun surface (occ=4) but not over solid planets/rings
-        if(occ[idx] && occ[idx]!==4)continue;
-        const rd=getRay(gx,gy,cam);
-        const wx=camPos[0]-sunPos[0],wy=camPos[1]-sunPos[1],wz=camPos[2]-sunPos[2];
-        let bestStr=0,bestFi=-1;
-        for(let fi=0;fi<N_FL;fi++){
-          const fd=fDirs[fi];
-          const effLen=fLens[fi];
-          const rdfd=rd[0]*fd[0]+rd[1]*fd[1]+rd[2]*fd[2];
-          const denom=1-rdfd*rdfd;
-          if(denom<1e-6)continue;
-          const wrd=wx*rd[0]+wy*rd[1]+wz*rd[2];
-          const wfd=wx*fd[0]+wy*fd[1]+wz*fd[2];
-          const s=(wfd-wrd*rdfd)/denom;
-          if(s<sunR||s>effLen)continue;
-          const t=s*rdfd-wrd;
-          if(t<0.001)continue;
-          const ex=wx+t*rd[0]-s*fd[0],ey=wy+t*rd[1]-s*fd[1],ez=wz+t*rd[2]-s*fd[2];
-          const approachD=Math.sqrt(ex*ex+ey*ey+ez*ez);
-          const frac=(s-sunR)/(effLen-sunR);
-          const width=lerp(FL_W0,FL_W1,frac)*(0.55+0.45*Math.sin(frac*9+globT*0.8+fi*2.3));
-          if(approachD>width)continue;
-          const str=(1-approachD/width)*(1-frac*0.5);
-          if(str>bestStr){bestStr=str;bestFi=fi;}
-        }
-        if(bestStr>0.08){
-          const br=bestStr*0.85;
-          const h=fhash(gx,gy,555+bestFi);
-          const ch=FLARE_CS[Math.floor(h*FLARE_CS.length)];
-          const sc=BODIES[0].col;
-          grid[idx]={ch,r:Math.floor(sc[0]*br),g:Math.floor(sc[1]*br*0.65),b:Math.floor(sc[2]*br*0.25)};
-        }
-      }
     }
   }
 
