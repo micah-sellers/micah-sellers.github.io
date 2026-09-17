@@ -2,23 +2,41 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Solar System</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solar System | Micah Sellers</title>
+<meta name="description" content="A raycast ASCII solar system you can tour or fly through.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@200;300&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#000;overflow:hidden}
-canvas{display:block;cursor:default}
+html,body{height:100%}
+body{background:#000;overflow:hidden;overscroll-behavior:none}
+canvas{display:block;cursor:default;touch-action:none}
 </style>
 </head>
 <body>
-<canvas id="c"></canvas>
+<canvas id="c" aria-label="ASCII solar system. Scroll or use the arrow keys to move between planets, press F to fly freely."></canvas>
 <script>
-const CW=10,CH=16;
+const CW=8,CH=13;   // glyph cell in px; Courier New is 0.6 em wide, so keep CW close to 0.6*CH
+// ── brightness experiment ── set both back to 0 and 1 to get the original look exactly.
+const CELL_FILL=0.38;   // 0 = off. Paints body cells with this fraction of their glyph colour, behind the glyph.
+                        // Only on bodies that are large on screen, fading in with size and out toward the limb;
+                        // never on rings or atmosphere shells. Under white cloud the fill is the surface colour beneath.
+const SUN_FILL=0.72;     // the sun is a light source, so its disc is filled much harder than anything else (0 = off)
+const FILL_SIZE=[6,14]; // body radius in glyph cells: no fill below the first, full fill above the second
+const GLYPH_GAIN=1.15;  // 1 = off. Glyph colour boost, applied in proportion to the fill under it
 const cvs=document.getElementById('c');
 const ctx=cvs.getContext('2d');
-let GW,GH;
-function resize(){cvs.width=innerWidth;cvs.height=innerHeight;GW=Math.floor(cvs.width/CW);GH=Math.floor(cvs.height/CH);}
+let GW,GH,W,H,DPR,rays=null;
+function resize(){
+  DPR=Math.min(window.devicePixelRatio||1,2);
+  W=innerWidth;H=innerHeight;
+  cvs.width=Math.floor(W*DPR);cvs.height=Math.floor(H*DPR);
+  cvs.style.width=W+'px';cvs.style.height=H+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  GW=Math.floor(W/CW);GH=Math.floor(H/CH);
+  rays=new Float32Array(GW*GH*3);
+}
 resize();addEventListener('resize',resize);
 
 // --- vec3 ---
@@ -33,6 +51,8 @@ const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]
 const lerp=(a,b,t)=>a+(b-a)*t;
 const lv=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];
 const clamp=(x,lo,hi)=>Math.max(lo,Math.min(hi,x));
+const D2R=Math.PI/180;
+const sstep=(a,b,x)=>{const t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t);};
 
 // --- hash ---
 function hash32(x,y,s){
@@ -74,8 +94,38 @@ const BODIES=[
    desc:['SATURN','Ringed wonder','Ice and rock rings','146 known moons','Hexagonal storm','Low density body','Gas giant twin']},
   {id:7,name:'Uranus', pos:[255,0,0], r:1.10, orbitR:255, col:[150,215,215], cs:'c<>(){}[]', spd:0.014,ph:4.2,
    desc:['URANUS','Ice giant blue','Tilted 97 degrees','Rolls on its side','27 known moons','Faint thin rings','Methane blue hue']},
+  {id:8,name:'Neptune',pos:[330,0,0], r:1.05, orbitR:330, col:[85,125,235],  cs:'~=-_<>{}',  spd:0.009,ph:0.6,
+   desc:['NEPTUNE','Farthest planet','Deep blue ice giant','Winds to 2000 km/h','16 known moons','165 year orbit','Found by maths']},
 ];
-const bodyPos=BODIES.map(b=>[...b.pos]);
+// --- moons: not stops, just company. Sizes and distances are compressed like everything else, but
+// order, relative size, orbital plane (the parent's equator) and period ratios are real:
+// Io:Europa:Ganymede keep their 1:2:4 resonance, Phobos outruns Mars's spin, Triton runs backwards.
+const MOONS=[
+  //        parent  orbit a  radius  rad/s    phase  axis tilt (deg)  surface
+  {name:'Moon',     par:3,a:2.40,r:0.160,spd:0.020, ph:0.6,tilt:5.1,  kind:'luna'},
+  {name:'Phobos',   par:4,a:0.78,r:0.034,spd:0.160, ph:0.0,tilt:25.2, kind:'rock'},
+  {name:'Deimos',   par:4,a:1.35,r:0.024,spd:0.040, ph:2.0,tilt:25.2, kind:'rock'},
+  {name:'Io',       par:5,a:3.30,r:0.110,spd:0.080, ph:0.4,tilt:3.1,  kind:'io'},
+  {name:'Europa',   par:5,a:4.20,r:0.095,spd:0.040, ph:2.2,tilt:3.1,  kind:'europa'},
+  {name:'Ganymede', par:5,a:5.60,r:0.160,spd:0.020, ph:4.0,tilt:3.1,  kind:'ganymede'},
+  {name:'Callisto', par:5,a:7.60,r:0.146,spd:0.0086,ph:1.1,tilt:3.1,  kind:'callisto'},
+  {name:'Mimas',    par:6,a:3.65,r:0.042,spd:0.085, ph:1.0,tilt:26.7, kind:'mimas'},
+  {name:'Enceladus',par:6,a:4.05,r:0.050,spd:0.058, ph:3.3,tilt:26.7, kind:'enceladus'},
+  {name:'Titan',    par:6,a:5.40,r:0.200,spd:0.0050,ph:5.0,tilt:26.7, kind:'titan'},
+  {name:'Iapetus',  par:6,a:8.20,r:0.072,spd:0.0010,ph:0.2,tilt:26.7, kind:'iapetus'},
+  {name:'Miranda',  par:7,a:1.75,r:0.032,spd:0.090, ph:0.0,tilt:97.8, kind:'miranda'},
+  {name:'Titania',  par:7,a:2.70,r:0.064,spd:0.0146,ph:2.5,tilt:97.8, kind:'icy'},
+  {name:'Oberon',   par:7,a:3.40,r:0.060,spd:0.0094,ph:4.4,tilt:97.8, kind:'icy',tint:[0.95,0.86,0.80]},
+  {name:'Triton',   par:8,a:2.60,r:0.110,spd:-0.0216,ph:1.0,tilt:51.3,kind:'triton'},   // retrograde, steeply inclined
+];
+MOONS.forEach((m,k)=>{
+  m.id=BODIES.length+k;m.moon=true;m.ang=0;m.cs=m.kind==='rock'?'<>^v7k':'.:;oO0';
+  const t=m.tilt*D2R;m.axis=[-Math.sin(t),Math.cos(t),0];
+  m.u=[Math.cos(t),Math.sin(t),0];m.v=[0,0,1];                       // basis of the orbital plane
+  (BODIES[m.par].moons=BODIES[m.par].moons||[]).push(m);
+});
+const RC=[...BODIES,...MOONS];                                       // everything the raycaster sees, index === id
+const bodyPos=RC.map(b=>b.pos?[...b.pos]:[0,0,0]);
 
 const ATM=[
   null,
@@ -87,150 +137,357 @@ const ATM=[
   {r:2.06, col:[195,165,125], str:0.80}, // Jupiter  planet r=1.90  (1.08x)
   {r:1.62, col:[205,185,145], str:0.75}, // Saturn   planet r=1.50  (1.08x)
   {r:1.19, col:[ 80,210,210], str:0.80}, // Uranus   planet r=1.10  (1.08x)
+  {r:1.13, col:[ 70,120,255], str:0.80}, // Neptune  planet r=1.05  (1.08x)
 ];
 
 const STOPS=[null,...BODIES];
+const N_STOPS=STOPS.length;             // 0 overview, 1 sun, 2.. planets
+const LAST=N_STOPS-1;
+
+// --- Earth surface map: 144x72 equirectangular, 2 bits per cell, derived from
+// NASA Blue Marble. 0 ocean, 1 vegetation, 2 arid, 3 ice. Row 0 = 90N, col 0 = 180W.
+const EW=144,EH=72;
+const decodeMap=b64=>{
+  const s=atob(b64),a=new Uint8Array(EW*EH);
+  for(let i=0;i<a.length;i++)a[i]=(s.charCodeAt(i>>2)>>((i&3)*2))&3;
+  return a;
+};
+const EARTH=decodeMap('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/P//////PwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADA3w/8/////wAAAPQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADA/AAA////fwAAAAAAAAAAAAAAAFkBAAAAAAAAAAAAAABQAQAwVAAA8P//HwAAAAAAAAAQAABQVVUBAAAAAAAAAAAAAAAAVAYQlRUA0P//HwAAAAAAAAAAQFFVVVVVVVRVAAAAAFBVVVVVRRVQEFABQP//AwAAAEBVFQAAVVFVVVVVVVVVVVVVFVBVVVUVVVVVBUAVQP8HAAAAAFRVBVVVVVVVVVVVVVVVVVVVAEBVVVVVVVVVAEAFAP8AAAEAAFVUVVVVVVVVVVVVVVVVVVUVAFBVVVVVVVUFABQAADwAAAAAUBVUVFVVVVVVVVVVVVVVBVUBAAAEAFRVVVUFAFQQAAAAAAAAABRQVVVVVVVVVVVVVVUBAAEAAAAAAEBVVVVVAVQVAAAAAAAQAARUVVVVVVVVVVVVVRUAUAEAAAAAAABVVVVVFVVVAQAAAABFQFVVVVVVVVVVVVVVVRUAUAAAAAAAAABUVVVVVVVVAQAAAABQVFVVVVVVVVVVVVVVVVUAAAAAAAAAAABQlVZVVFUFBAAAAABAVVVVVZWpqqpValVlVVUAAAAAAAAAAABQVVZVUVUFAAAAAABAVVVVRCWkqqalqqpqVRUAAAAAAAAAAABQVVpVUVUAAAAAAABAFVEVABWoqmqlqqpqVQUEAAAAAAAAAABQalZVVRUAAAAAAACUAQAVBFWkqqWqqqpaVQAAAAAAAAAAAABAqlVVVQUAAAAAAAClAABBqmmgqqqqqqoWEAABAAAAAAAAAABAqmZVVQEAAAAAAAAAqQAAkKqpqvavqmlVQEAAAAAAAAAAAAAAqKlVVQAAAAAAAACoqgAAoKqqqpaqWlVVAAAAAAAAAAAAAAAApKpVFQAAAAAAAACqqgoqoKqqqlaqVlVVAAAAAAAAAAAAAAAAQKkFQAAAAAAAAACqqqqqqiqoqlplVVVVAAAAAAAAAAAAAAAAAKUCQAAAAAAAAKCqqqqqiqpApVZVVVVVAAAAAAAAAAAAAAAAAKQBAAAAAAAAAKCqqqqqiqoqAGZVVVUVAAAAAAAAAAAAAAAAAFABAAAAAAAAAKSqqqqqKqpqAGUVVBUAAAAAAAAAAAAAAAAAAFBFAUAAAAAAAKCqqqqqKqgaAFQFUAUAAAAAAAAAAAAAAAAAAABUAQAAAAAAAKCqqqqqqqgCAKQAQBUAAQAAAAAAAAAAAAAAAAAAFQAAAAAAAFSpqqqpWioAAKAAQFUAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAFBVVVVlVQIAAFAAABQAAAAAAAAAAAAAAAAAAAAAAFRVAAAAAEBVVVVVVakAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFRVAQAAAABVUFVVVaoAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAFRVFQAAAAAAAFVVZSoAAAAAAAEUAAAAAAAAAAAAAAAAAAAAAFVVVQAAAAAAAFVVlQYAAAAAAAEVAAAAAAAAAAAAAAAAAAAAAFVVVQEAAAAAAFVVkQEAAAAAAAUVAAAAAAAAAAAAAAAAAAAAAFVVVVUAAAAAAFVVVQAAAAAAAAQAAFABAAAAAAAAAAAAAAAAAFVVVVUFAAAAAFRVVQAAAAAAAAAAAEAVAAAAAAAAAAAAAAAAAFRVVVUFAAAAAFRVVQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFRVVVUBAAAAAFBVVQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFBVVVUAAAAAAFRVVUAAAAAAAAAAAAUAAAAAAAAAAAAAAAAAAIBVVVUAAAAAAFRVVVAAAAAAAAAAkBUEAAAAAAAAAAAAAAAAAABaVVUAAAAAAKhVBVAAAAAAAAAAqKoWAAAAAAAAAAAAAAAAAABaVVUAAAAAAKBqBRAAAAAAAACQqqpaAAAAAAAAAAAAAAAAAABaVQUAAAAAAKBaBRAAAAAAAABgqqpaAAAAAAAAAAAAAAAAAABaVQEAAAAAAKBaAQAAAAAAAACgqqpaAQAAAAAAAAAAAAAAAABWVQAAAAAAAIBqAQAAAAAAAABQqapqAQAAAAAAAAAAAAAAAEBWFQAAAAAAAEBaAAAAAAAAAABQValaAQAAAAAAAAAAAAAAAEBWFQAAAAAAAAAFAAAAAAAAAABQAFBVAAAAAAAAAAAAAAAAAEBVAQAAAAAAAAAAAAAAAAAAAAAAAABVAAAAAAAAAAAAAAAAAEBVAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAEAFAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAFAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAJABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAJABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMAAAAAA8MAAwAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAPz//8D/////////DwAAAAAAAAAAAAAAAMA/AAAAAAA8/P////////z//////////z8AAAAAAAAAAAD/D///AAAAAPz//////////////////////w8AAAAA8P////////8DAAAA/P///////////////////////wMA////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////');
+// Mars albedo, same grid and packing, derived from the USGS Viking MDIM2.1 colour mosaic.
+// 0 darkest (Syrtis Major, Acidalia) .. 3 brightest dust (Tharsis, Arabia, Hellas).
+const MARS=decodeMap('////////////////////////////////////////////////////////////////////////////////////////////////5v///7/7/////2+pvwFpq/n///////////////9bAAUEAABAAAAAAJD/////P///V/3//////////////////78vAAAAAAAA7m8A/isgQVkDAL0eBfy/+v//////m+b///+2BAr///8TLC8B/7qb/a//WxoAAAAAFAAAAAAAAAAAAABAEFBABwT9+///////p6pqmWrvWl9VAQAAAAAAAFAAVWqpqqqqqrqq+ruq/v//f/2vV6mqqqqqqmamVREAAAAAEFC6/66qrqqq6u6qqqqqqrq6rq1mW2qqqqqqqqqpqqUBAAAAAKX6v+uuqq6qqqqqrqqqqqqqqqqqZ5WpqqqqqqqmqpoVABQFQOn/+7uqqqtqVVVVVZWpqqqqqqpqp6qq/r//v6r6qmppAVQFlPr6+///q6plVUAQUFllVlpVpaqqp6qqq///////r1pVQUUEUFX6/67/qqqqVlWRVVlqVVVVVaqma6rqru7//////1sBBQAAQJXq/6uqqqqqriZBlL1qmaZlWVVlZqr+/////////68WAAAAAJX6/6uqqqqqalVVValaVplWVaVaW6r/////////r6r6BgAAABCl/6+q/q+qVVVVUWpWVZVWmpWVV+r/////////r5rpWgAAAABA6v/7+v//qgFURRVVVaWqaqVqq/r//////////+qqqgAAAAAAkKq76v+b5ioQAFBVlaq/qqqqq6qqqvr7/////6pqVQAAAABAQKr6+q+qUXoBAACVqarv77qqq6qqmqr+///7//9rWgAAAABAUalllapqkaoAQKWqqqr+77+qlqqplqr6//+q/v+uagAAAAAAVbpRVupqBmoAlaqqqqqqqrtWkWqVqqr7//+qvv+ragEAAABVqqZmqv+uqpVVlaqqqqrqqmoQkVqV6ur6/7+q/v+qRgEAAIBqWpWq+v9vqqqqVaqqqpWqqmoUq6qq/qr+/7/q6qoaQQEAAJCqRanq///v6qqqQmmWVkCVqlpVb6apvqr/6quqqroaQQAAALRpVarq/6+qqq6qRpVVBUCqWpqmr6qq/6v//6uq6r8GAAAAAFSpla6q/6tqppqqRlVVAdD/W5aqq6qq/+/+v+++qq8WAQEAAFWp5rqq+q+qpqpqVVVVAeT/W5Wqr6rq/7/+v676q6oaAQUAAFSp5ruq7++qRFVaVVVVEKn/C1Wpq6r6///6/6r6v6pWQQUAAFWp+ruq6qqqAABWVVVVVar/BlXpq6r6/v/6/+/+v6pVQAUARVWm6quq6qtqAABVVVVVVam/BlWpq6r6+6/q////v2pVQVVRlVmVqa+mqqsqAABVVVVVVaWqBlXpq6r+67rq//+/rqpaVVVVVVapqauqqroaAABVVVVVVaWqFlSqq6r6v5rq/+///6taWVWVVUFZpaqaur5qAABUVZVVFlVqFWWqr6r6vpb6/6///6pWVVVVAEBVValaqr5aAABUVVWpVVVVpaqqq6r6uqq6/7///65VlqoSAVBVZaVWqq8WAABUVVVaFVWVqqqqq6qq66rq/7/+v+pWVakFAAAVUamaqaoZAABRVVVZVVSpqqqqq6qq/q/qv///r/9aRmUFAFAERK6pqaoFAABVlVWVVVWVqqrqq67q///+////qvWbAlAAAFAFAKmqqlUFAABVVVWpVqWq/qu6r7+q//////+/6bZrAgQAAFAAAKmkqlUKAABQFVWlVpmq/v/6r//7/////v9/pYlrAQAAAJAAABVAqmYFAABAAFRRVWWq+v////////////9vlZW7AAQAAFAAEAAAoKoBAAAAAGQBVWm6qv////////+/6vt/pVppABABAEAVVUUAQKoaAAAAAGQVAKX7q/7/r/7///////uvqhVpBQAAAEBWaVVVVaUGABAAABBVAGX/qvr/q/7///////+valYVAAAAAABqqqqqWlVGFAAAAABAAESqavr/q/7///////+vWlUFAAAAAECluqqqplZmZQUEBAAARQFVqur/////////+/+/FgAAAAABAECpqu+qqqpqVlVUVVBAVAVEZfr//////////v9bBUAEAAAAAECq+q+qqqqqqmpVVRFQWVlVUf7/v+////////8XFQAAAAAAAECp6u+uqmqu+r9aZVVQpVlVVfnvp6r///////9bAVAFAAAAAFCpqqqqqvr7/7+qWVFVqZUFUanqa6mm/v////8bAFUGAABAAFSpqpWqqf////+/qlVVVWkRRVWqV1VGuq////9bERUAAFAEAFWqFlBVlf7/////r6qvVVUVEUVWUpVWVWWp+v+rCgUAAFQAVVWZBQBVif7/////7+7/VqZqARARFVVUVVVWquWrawFQAGVVUVWVAAAAQP///////+7/q6oaQBQQAVRVWZVqaZWqGQCQFlWRRVUVAAAAAP7/////////W6YbFFQVAQBVWRpllRWZBQBUBVRVVVUAAAAAQP7/////////v/rrAUAWQRRZWQZVUFWpWhGlZqpqlVYVAAAAAJH//////////7+qVVAERVZpWVFFYZWaVlWVpa+ru6qlBgAABED/////////v6papVYVl2qVZlWlaVVVVVEpkKv6r6quG0AQBED6////7/v/r6pW5aqlq6qqalqVqmpVQEAVRKpqqarvWlRoVZXr/////+//6qqpaqrqu6qprloVqWpVBVRBJumqZbqqlqpVVOn/7+///76vrmmVqZqVq5ZlqlVVVZqVVpVaZamZmqtqlplVlam6qqr+r76/qlaVmpVlm1amWVZkZaqqu6qqqqqaQkEFUZZVVWWqqv6qrmlVBFFWlVJZVpWqRgFAVaWqqq6qpVZWVAVQlaqmqqqqqqtqVgBQFRWZARURF6qRVVVlpamqqqrq6uqqq1aqqqr/Svq/apVqqlVa/69pqVZam2qll2VVaaWqqqqq6r+urlWqqqrq/7vrqqqWVllZ+uu/+1pW67+/lqqaqqqqrvqq///q/1Zlqqr6/6qq76pqWZap/q+m/qup//++6atq+f//uv/////////+quqr6f+rq6qq6qav+q+mqvq6q6q+6qv6///+//////////////+qqqqq6b+7qqr//qvqW6WVq6qq+qq6v/////////////////+v6qrqqqquqqqr+ruqWqqaq6qaqqmqqqv////v6////////////+q+qqr6qqu6+r+rqqqqV6qaaqZaqbn6/////////////////////6qqquv6/7+7qqpqV1WValVV+v/////////////////////6v6vq+qqq6uqqqlqlq/r///////////////////////////+rqv////+rq6qqqqqq');
+const E_TILT=23.4*Math.PI/180,E_CT=Math.cos(E_TILT),E_ST=Math.sin(E_TILT);
+const E_SPIN=0.05; // rad/s
 
 // dist: camera distance from planet center at each stop.
 // Camera direction is computed from the planet-sun vector so the lit side
 // is always visible from the same angle regardless of orbital position.
 const STOP_VIEW=[
   null,               // 0 overview
-  null,               // 1 sun
+  {dist:21.2, fov:50},  // 1 sun
   {dist:0.72, fov:72},  // 2 mercury  r=0.30
   {dist:1.24, fov:72},  // 3 venus    r=0.55
   {dist:1.34, fov:72},  // 4 earth    r=0.60
   {dist:1.10, fov:72},  // 5 mars     r=0.45
-  {dist:4.60, fov:72},  // 6 jupiter  r=1.90
+  {dist:4.60, fov:72, up:0.06},  // 6 jupiter  r=1.90  near-equatorial, so the Great Red Spot is in view
   {dist:7.50, fov:72},  // 7 saturn   r=1.50  rings extend to 3.30
   {dist:2.67, fov:72},  // 8 uranus   r=1.10
+  {dist:2.55, fov:72, up:0.12},  // 9 neptune  r=1.05
 ];
+const OVERVIEW={pos:[0,380,470],tgt:[0,0,30],fov:62};   // frames Neptune's whole orbit
+const SUN_DIR=norm([9,12,15]);
 
 // Direction the camera sits relative to a planet: toward the sun, tilted up.
 // Returns a unit vector in world space.
-function stopCamDir(planetPos){
+function stopCamDir(planetPos,up=0.55){
   const toSun=norm(sub(bodyPos[0],planetPos));
-  return norm(add(mul(toSun,0.75),mul([0,1,0],0.55)));
+  return norm(add(mul(toSun,0.75),mul([0,1,0],up)));
 }
-
-const SS=5;
-const SMAX=8*SS;
-
-function getStopPreset(si){
-  if(si===0)return{pos:[130,230,310],tgt:[130,0,0],fov:62};
-  if(si===1)return{pos:[9,12,15],   tgt:[0,0,0], fov:50};
-  const p=bodyPos[si-1];
-  const v=STOP_VIEW[si];
-  const cp=add(p,mul(stopCamDir(p),v.dist));
-  return{pos:cp,tgt:[...p],fov:v.fov};
-}
-
-function getPreset(s){
-  const sf=s/SS;
-  const i=clamp(Math.floor(sf),0,7);
-  const f=sf-i;
-  const A=getStopPreset(i),B=getStopPreset(Math.min(i+1,8));
-  return{pos:lv(A.pos,B.pos,f),tgt:lv(A.tgt,B.tgt,f),fov:lerp(A.fov,B.fov,f)};
-}
-
-// scroll state — spring-damper
-let scrollTgt=0,scrollVel=0,scrollPos=0;
-addEventListener('wheel',e=>{scrollVel+=e.deltaY*0.035;},{passive:true});
-
-let mouseX=0,mouseY=0;
-let dragActive=false,dragLastX=0,dragLastY=0,dragMoved=false;
-let orbitYaw=0,orbitPitch=0,inPlanetStop=false;
-cvs.addEventListener('mousemove',e=>{
-  const r=cvs.getBoundingClientRect();
-  mouseX=e.clientX-r.left;mouseY=e.clientY-r.top;
-  if(dragActive&&inPlanetStop){
-    orbitYaw-=(e.clientX-dragLastX)*0.004;
-    orbitPitch=clamp(orbitPitch+(e.clientY-dragLastY)*0.003,-1.3,1.3);
-    dragLastX=e.clientX;dragLastY=e.clientY;
-    dragMoved=true;
-  }
-});
-cvs.addEventListener('mousedown',e=>{if(e.button===0){dragActive=true;dragMoved=false;dragLastX=e.clientX;dragLastY=e.clientY;}});
-cvs.addEventListener('mouseup',()=>{dragActive=false;});
-cvs.addEventListener('mouseleave',()=>{dragActive=false;});
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Camera — self-contained module. Reuse by copying this object and the
-// buildCam / getRay / projectPt functions below. Tune Camera.rates to change
-// feel without touching any other logic.
+// Camera + navigation.
 //
-// TRANSIT mode: pos, tgt, fov all lerp toward their goals.
-// STOP mode:    pos is frozen in world space (grounded, no orbital spin);
-//               only tgt pans to track the body, and fov settles.
+// TOUR mode: one scroll step = one stop. Each hop is a timed flight from the
+//   pose the camera had at departure to the (moving) pose of the destination
+//   stop, so arrival is exact. Position travels on a straight line, or on an
+//   arc around the sun when the straight line would pass through it, with a
+//   small lift out of the ecliptic. The view direction blends from "watch what
+//   I'm leaving" to "watch where I'm going", and gets there before the
+//   position does, so the destination is always approached head-on.
+// FLY mode: free camera. WASD / arrows move, mouse looks.
+//
+// Tune Camera.rates to change feel without touching any other logic.
 // ─────────────────────────────────────────────────────────────────────────────
 const Camera={
-  pos:[130,230,310],
-  tgt:[130,0,0],
-  fov:62,
-
-  _gPos:[130,230,310], // transit goal — position
-  _gTgt:[130,0,0],     // shared goal  — look-at point
-  _gFov:62,            // shared goal  — FOV
-
-  // Exponential-decay rates (1/s). Higher = faster/snappier.
+  pos:[...OVERVIEW.pos],
+  tgt:[...OVERVIEW.tgt],
+  fov:OVERVIEW.fov,
   rates:{
-    transitPos:1.0,  // position travel speed during inter-planet transit
-    transitTgt:1.3,  // look-target travel speed during transit
-    transitFov:0.9,  // FOV travel speed during transit
-    stopPos:8.0,     // position tracking speed at a stop
-    stopTgt:20.0,    // look-target tracking speed at a stop
-    stopFov:2.0,     // FOV settle speed at a stop
+    hopBase:2.6,     // s, minimum-ish flight time
+    hopPerDecade:1.3,// s added per 10x of distance
+    lookLead:0.6,    // fraction of the flight by which the view has settled on the destination
+    lift:0.08,       // arc height as a fraction of hop length
+    liftMax:30,
+    flyAccel:5.0,    // 1/s, how fast fly velocity follows the keys
+    flyLook:0.0022,  // rad per pixel of mouse travel
   },
-
-  // Set goals. Any null arg leaves that goal unchanged.
-  setGoal(pos,tgt,fov){
-    if(pos)this._gPos=pos;
-    if(tgt)this._gTgt=tgt;
-    if(fov!=null)this._gFov=fov;
-  },
-
-  // Call once per frame. mode: 'transit' | 'stop'
-  // Both modes lerp — no hard snaps. Stop mode uses a fast pos rate so the
-  // camera feels geostationary without any discontinuity on mode entry.
-  update(dt,mode){
-    if(mode==='stop'){
-      const lp=clamp(1-Math.exp(-this.rates.stopPos*dt),0,1);
-      const lt=clamp(1-Math.exp(-this.rates.stopTgt*dt),0,1);
-      const lf=clamp(1-Math.exp(-this.rates.stopFov*dt),0,1);
-      this.pos=lv(this.pos,this._gPos,lp);
-      this.tgt=lv(this.tgt,this._gTgt,lt);
-      this.fov=lerp(this.fov,this._gFov,lf);
-    }else{
-      const lp=clamp(1-Math.exp(-this.rates.transitPos*dt),0,1);
-      const lt=clamp(1-Math.exp(-this.rates.transitTgt*dt),0,1);
-      const lf=clamp(1-Math.exp(-this.rates.transitFov*dt),0,1);
-      this.pos=lv(this.pos,this._gPos,lp);
-      this.tgt=lv(this.tgt,this._gTgt,lt);
-      this.fov=lerp(this.fov,this._gFov,lf);
-    }
-  },
-
   build(){return buildCam(this.pos,this.tgt,this.fov);}
 };
 
-// direct-flight nav state — records departure each time destination changes
-let navToI=0,navFromScroll=0;
-let navFromPos=[130,230,310],navFromTgt=[130,0,0],navFromFov=62;
-let planetEntryTimer=0,prevInPlanetStop=false;
+let mode='tour';                 // 'tour' | 'fly'
+let navToI=0,navFromI=0,navT=1,navDur=1,navMid=false,navPolar=false,navPolarD=0;
+let navFrom={pos:[...Camera.pos],tgt:[...Camera.tgt],fov:Camera.fov};
+let orbitYawRel=0,orbitPitchRel=0,inPlanetStop=false;
 
-// click: fly to the clicked body or HUD stop
+const smoother=t=>t*t*t*(t*(t*6-15)+10);
+const easeOut=t=>1-(1-t)*(1-t)*(1-t);
+const wrapPi=a=>{while(a>Math.PI)a-=2*Math.PI;while(a<-Math.PI)a+=2*Math.PI;return a;};
+
+// Exact camera pose for a stop, in the stop's own (moving) frame.
+function stopPose(si){
+  if(si===0)return{pos:[...OVERVIEW.pos],tgt:[...OVERVIEW.tgt],fov:OVERVIEW.fov};
+  const p=bodyPos[si-1],v=STOP_VIEW[si];
+  const bd=si===1?SUN_DIR:stopCamDir(p,v.up);
+  // drag-orbit angles are stored relative to the sun-facing default, so the
+  // lit side stays where you left it while the planet moves along its orbit
+  const yaw=Math.atan2(bd[0],bd[2])+orbitYawRel;
+  const pitch=clamp(Math.asin(clamp(bd[1],-1,1))+orbitPitchRel,-1.3,1.3);
+  const od=[Math.sin(yaw)*Math.cos(pitch),Math.sin(pitch),Math.cos(yaw)*Math.cos(pitch)];
+  return{pos:add(p,mul(od,v.dist)),tgt:[...p],fov:v.fov};
+}
+
+function goTo(si){
+  si=clamp(si,0,LAST);
+  if(mode==='tour'&&si===navToI)return;
+  const wasFly=mode==='fly';
+  // a far look-point keeps the departure view direction steady when leaving free flight
+  const tgt=wasFly?add(Camera.pos,mul(norm(sub(Camera.tgt,Camera.pos)),1e4)):[...Camera.tgt];
+  navFrom={pos:[...Camera.pos],tgt,fov:Camera.fov};
+  navMid=navT<1&&!wasFly;
+  navFromI=wasFly?-1:navToI;navToI=si;navT=0;
+  orbitYawRel=0;orbitPitchRel=0;
+  if(wasFly){mode='tour';if(document.pointerLockElement===cvs)document.exitPointerLock();}
+  const B=stopPose(si),A=navFrom.pos;
+  const d=len(sub(B.pos,A));
+  navDur=clamp(Camera.rates.hopBase+Camera.rates.hopPerDecade*Math.log10(1+d),3.0,7.0);
+  // does the straight line pass too close to the sun?
+  const ab=sub(B.pos,A),tt=clamp(-dot(A,ab)/Math.max(1e-6,len2(ab)),0,1);
+  const closest=len(add(A,mul(ab,tt)));
+  const ra=Math.hypot(A[0],A[2]),rb=Math.hypot(B.pos[0],B.pos[2]);
+  navPolar=closest<16&&ra>2&&rb>2&&tt>0.02&&tt<0.98;
+  navPolarD=wrapPi(Math.atan2(B.pos[2],B.pos[0])-Math.atan2(A[2],A[0]));
+}
+
+function updateTour(dt){
+  if(navT<1)navT=Math.min(1,navT+dt/navDur);
+  const B=stopPose(navToI);
+  if(navT>=1){Camera.pos=B.pos;Camera.tgt=B.tgt;Camera.fov=B.fov;inPlanetStop=navToI>=1;return;}
+  inPlanetStop=false;
+  const A=navFrom,R=Camera.rates;
+  const e=navMid?easeOut(navT):smoother(navT);
+  let pos;
+  if(navPolar){
+    const ta=Math.atan2(A.pos[2],A.pos[0]);
+    let d=wrapPi(Math.atan2(B.pos[2],B.pos[0])-ta);
+    if(d-navPolarD>Math.PI)d-=2*Math.PI;else if(navPolarD-d>Math.PI)d+=2*Math.PI; // never flip direction mid-flight
+    navPolarD=d;
+    const r=lerp(Math.hypot(A.pos[0],A.pos[2]),Math.hypot(B.pos[0],B.pos[2]),e),th=ta+d*e;
+    pos=[Math.cos(th)*r,lerp(A.pos[1],B.pos[1],e),Math.sin(th)*r];
+  }else pos=lv(A.pos,B.pos,e);
+  pos[1]+=Math.sin(Math.PI*e)*Math.min(R.liftMax,len(sub(B.pos,A.pos))*R.lift);
+  const lk=clamp(navT/R.lookLead,0,1),u=navMid?easeOut(lk):smoother(lk);
+  const dA=norm(sub(A.tgt,pos)),dB=norm(sub(B.tgt,pos));
+  let dir=lv(dA,dB,u);
+  dir=len(dir)<0.05?dB:norm(dir);
+  Camera.pos=pos;
+  Camera.tgt=add(pos,mul(dir,Math.max(1,len(sub(B.tgt,pos)))));
+  Camera.fov=lerp(A.fov,B.fov,e);
+}
+
+// --- free flight ---
+const keys={};
+const fly={yaw:0,pitch:0,vel:[0,0,0]};
+function enterFly(){
+  const f=norm(sub(Camera.tgt,Camera.pos));
+  fly.yaw=Math.atan2(f[0],f[2]);fly.pitch=clamp(Math.asin(clamp(f[1],-1,1)),-1.35,1.35);
+  fly.vel=[0,0,0];mode='fly';inPlanetStop=false;navT=1;
+  if(cvs.requestPointerLock){try{const p=cvs.requestPointerLock();if(p&&p.catch)p.catch(()=>{});}catch(e){}}
+}
+function exitFly(){
+  // land at whatever is closest; far from everything means back to the overview
+  let best=0,bd=140;
+  for(let i=0;i<BODIES.length;i++){const d=len(sub(bodyPos[i],Camera.pos))-BODIES[i].r;if(d<bd){bd=d;best=i+1;}}
+  goTo(best);
+}
+function flyLook(dx,dy){
+  fly.yaw-=dx*Camera.rates.flyLook;
+  fly.pitch=clamp(fly.pitch-dy*Camera.rates.flyLook,-1.35,1.35);
+}
+function updateFly(dt){
+  const f=[Math.sin(fly.yaw)*Math.cos(fly.pitch),Math.sin(fly.pitch),Math.cos(fly.yaw)*Math.cos(fly.pitch)];
+  const r=norm(cross(f,[0,1,0]));
+  const k=c=>keys[c]?1:0;
+  const mf=k('KeyW')+k('ArrowUp')-k('KeyS')-k('ArrowDown');
+  const mr=k('KeyD')+k('ArrowRight')-k('KeyA')-k('ArrowLeft');
+  const mu=k('KeyE')+k('Space')-k('KeyQ');
+  let wish=add(add(mul(f,mf),mul(r,mr)),[0,mu,0]);
+  if(len2(wish)>1)wish=norm(wish);
+  // speed scales with clearance: slow and precise near a surface, fast in open space
+  let clear=1e9;
+  for(let i=0;i<RC.length;i++)clear=Math.min(clear,len(sub(bodyPos[i],Camera.pos))-RC[i].r);
+  const speed=clamp(clear*2.5,1.5,300)*((keys.ShiftLeft||keys.ShiftRight)?4:1);
+  const a=clamp(1-Math.exp(-Camera.rates.flyAccel*dt),0,1);
+  fly.vel=lv(fly.vel,mul(wish,speed),a);
+  let p=add(Camera.pos,mul(fly.vel,dt));
+  for(let i=0;i<RC.length;i++){              // surfaces are solid; atmospheres are not
+    const o=sub(p,bodyPos[i]),d=len(o),min=RC[i].r*1.04;
+    if(d<min)p=add(bodyPos[i],mul(norm(o),min));
+  }
+  const pl=len(p);if(pl>900)p=mul(p,900/pl);
+  Camera.pos=p;Camera.tgt=add(p,f);
+  Camera.fov=lerp(Camera.fov,70,clamp(dt*3,0,1));
+}
+
+// --- input ---
+let mouseX=-1,mouseY=-1;
+let dragActive=false,dragLastX=0,dragLastY=0,dragMoved=false;
+cvs.addEventListener('mousemove',e=>{
+  const r=cvs.getBoundingClientRect();
+  mouseX=e.clientX-r.left;mouseY=e.clientY-r.top;
+  if(mode==='fly'){
+    if(document.pointerLockElement===cvs)flyLook(e.movementX,e.movementY);
+    else if(dragActive){flyLook(e.clientX-dragLastX,e.clientY-dragLastY);dragLastX=e.clientX;dragLastY=e.clientY;dragMoved=true;}
+    return;
+  }
+  if(dragActive&&inPlanetStop){
+    const dx=e.clientX-dragLastX,dy=e.clientY-dragLastY;
+    if(Math.abs(dx)+Math.abs(dy)>0){
+      orbitYawRel-=dx*0.004;
+      orbitPitchRel+=dy*0.003;
+      // keep the stored offset inside what the pitch clamp allows
+      const bd=navToI===1?SUN_DIR:stopCamDir(bodyPos[navToI-1],STOP_VIEW[navToI].up),p0=Math.asin(clamp(bd[1],-1,1));
+      orbitPitchRel=clamp(p0+orbitPitchRel,-1.3,1.3)-p0;
+      dragLastX=e.clientX;dragLastY=e.clientY;dragMoved=true;
+    }
+  }
+});
+cvs.addEventListener('mousedown',e=>{if(e.button===0){dragActive=true;dragMoved=false;dragLastX=e.clientX;dragLastY=e.clientY;}});
+addEventListener('mouseup',()=>{dragActive=false;});
+cvs.addEventListener('mouseleave',()=>{mouseX=-1;mouseY=-1;});
+
+// wheel: one deliberate scroll = one stop. Trackpad inertia (a decaying tail of
+// events) is swallowed; a fresh flick is louder than the tail and gets through.
+let wheelAcc=0,wheelLock=0,wheelLast=0,wheelT=0;
+addEventListener('wheel',e=>{
+  e.preventDefault();
+  if(mode==='fly')return;
+  const now=performance.now(),d=e.deltaMode===1?e.deltaY*33:e.deltaY,ad=Math.abs(d);
+  if(now<wheelLock){
+    if(ad<=wheelLast+4){wheelLast=ad;wheelLock=Math.max(wheelLock,now+120);return;}
+  }
+  if(now-wheelT>250)wheelAcc=0;
+  wheelT=now;wheelAcc+=d;
+  if(Math.abs(wheelAcc)>=40){goTo(navToI+Math.sign(wheelAcc));wheelAcc=0;wheelLast=ad;wheelLock=now+420;}
+},{passive:false});
+
+let touchY=null,touchX=0;
+cvs.addEventListener('touchstart',e=>{if(e.touches.length===1){touchY=e.touches[0].clientY;touchX=e.touches[0].clientX;}},{passive:true});
+cvs.addEventListener('touchend',e=>{
+  if(touchY==null||mode==='fly')return;
+  const t=e.changedTouches[0],dy=touchY-t.clientY,dx=touchX-t.clientX;touchY=null;
+  if(Math.abs(dy)>40&&Math.abs(dy)>Math.abs(dx))goTo(navToI+Math.sign(dy));
+},{passive:true});
+
+addEventListener('keydown',e=>{
+  if(e.ctrlKey||e.metaKey||e.altKey)return;
+  keys[e.code]=true;
+  if(e.code==='KeyF'&&!e.repeat){mode==='fly'?exitFly():enterFly();return;}
+  if(mode==='fly'){
+    if(e.code==='Escape'&&document.pointerLockElement!==cvs)exitFly();
+    if(/^(Arrow|Space)/.test(e.code))e.preventDefault();
+    return;
+  }
+  if(['ArrowDown','ArrowRight','PageDown','Space'].includes(e.code)){e.preventDefault();goTo(navToI+1);}
+  else if(['ArrowUp','ArrowLeft','PageUp'].includes(e.code)){e.preventDefault();goTo(navToI-1);}
+  else if(e.code==='Home')goTo(0);
+  else if(e.code==='End')goTo(LAST);
+  else if(/^Digit\d$/.test(e.code))goTo(+e.code.slice(5));
+});
+addEventListener('keyup',e=>{keys[e.code]=false;});
+addEventListener('blur',()=>{for(const k in keys)keys[k]=false;dragActive=false;});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HUD legend: the system reduced to symbols. Sun on top, planets below in
+// order, flat discs with loosely relative sizes. The current stop is lit and
+// named; everything is clickable.
+// ─────────────────────────────────────────────────────────────────────────────
+const LG_X=CW+12,LG_Y0=22,LG_STEP=19;
+const LG_R=[7,2.4,3.4,3.7,2.9,6.4,5.2,4.4,4.3];       // sun, mercury .. neptune
+const lgY=si=>LG_Y0+si*LG_STEP+(si>0?6:0)+(si>1?4:0); // si: 0 overview, 1 sun, 2.. planets
+const LG_BOTTOM=lgY(LAST)+LG_STEP*0.5;
+const FLY_Y=LG_BOTTOM+10,HUD_W=130;
+const BACK_LABEL='\u2190 Back to portfolio',BACK_HREF='index.html';
+const BACK_W=232,BACK_H=40,BACK_PAD=18;
+
+// camera's place along the legend, from its distance to the sun
+function lgCamY(){
+  const r=Math.hypot(Camera.pos[0],Camera.pos[2]);
+  for(let i=1;i<BODIES.length;i++){
+    const r0=BODIES[i-1].orbitR,r1=BODIES[i].orbitR;
+    if(r<=r1)return lerp(lgY(i),lgY(i+1),(r-r0)/(r1-r0));
+  }
+  return lgY(LAST)+Math.min(8,(r-BODIES[BODIES.length-1].orbitR)*0.03);
+}
+// returns a stop index, 'fly', 'back', or null
+function hudHit(mx,my){
+  if(mx<0||my<0)return null;
+  if(mx>=W-BACK_PAD-BACK_W&&mx<=W-BACK_PAD&&my>=H-BACK_PAD-BACK_H&&my<=H-BACK_PAD)return'back';
+  if(mx>=HUD_W)return null;
+  if(my>=FLY_Y&&my<FLY_Y+CH)return'fly';
+  if(mx>LG_X+60)return null;
+  for(let si=0;si<=LAST;si++)if(Math.abs(my-lgY(si))<=LG_STEP/2)return si;
+  return null;
+}
+function drawHud(currentI,hot){
+  const dim=a=>`rgb(${Math.floor(80*a)},${Math.floor(100*a)},${Math.floor(160*a)})`;
+  // spine
+  ctx.fillStyle=dim(0.35);ctx.fillRect(LG_X-0.5,lgY(1),1,lgY(LAST)-lgY(1));
+  for(let si=0;si<=LAST;si++){
+    const y=lgY(si),cur=si===currentI,hov=si===hot;
+    let col,r;
+    if(si===0){col=[80,100,160];r=5;}else{col=BODIES[si-1].col;r=LG_R[si-1];}
+    const a=cur||hov?1:0.42;
+    const fill=`rgb(${col[0]*a|0},${col[1]*a|0},${col[2]*a|0})`;
+    ctx.fillStyle='#000';ctx.beginPath();ctx.arc(LG_X,y,r+2.5,0,Math.PI*2);ctx.fill();   // break the spine around each disc
+    if(si===0){                                                                          // overview: an orbit, not a body
+      ctx.strokeStyle=fill;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(LG_X,y,r,0,Math.PI*2);ctx.stroke();
+      ctx.fillStyle=fill;ctx.beginPath();ctx.arc(LG_X,y,1.6,0,Math.PI*2);ctx.fill();
+    }else{
+      ctx.fillStyle=fill;ctx.beginPath();ctx.arc(LG_X,y,r,0,Math.PI*2);ctx.fill();
+      if(BODIES[si-1].hasRing){ctx.strokeStyle=fill;ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(LG_X-r-4,y+1.5);ctx.lineTo(LG_X+r+4,y-1.5);ctx.stroke();}
+    }
+    if(cur||hov){
+      ctx.strokeStyle=hov?'rgb(255,255,255)':fill;ctx.lineWidth=1;
+      ctx.beginPath();ctx.arc(LG_X,y,r+3.5,0,Math.PI*2);ctx.stroke();
+      ctx.font=`13px 'Courier New',monospace`;ctx.textBaseline='middle';
+      ctx.fillStyle=hov?'rgb(255,255,255)':fill;
+      ctx.fillText(si===0?'Overview':STOPS[si].name,LG_X+16,y+0.5);
+      ctx.textBaseline='top';
+    }
+  }
+  if(mode==='fly'||navT<1){                                                              // where the camera is
+    const y=mode==='tour'&&navToI===0?lerp(lgCamY(),lgY(0),smoother(navT)):mode==='tour'&&navFromI===0?lerp(lgY(0),lgCamY(),smoother(navT)):lgCamY();
+    ctx.fillStyle='rgb(255,255,255)';ctx.beginPath();ctx.moveTo(LG_X-13,y-3);ctx.lineTo(LG_X-8,y);ctx.lineTo(LG_X-13,y+3);ctx.fill();
+  }
+  ctx.font=`13px 'Courier New',monospace`;
+  ctx.fillStyle=hot==='fly'?'rgb(255,255,255)':dim(mode==='fly'?1:0.5);
+  ctx.fillText(mode==='fly'?'[f] land':'[f] fly',LG_X-7,FLY_Y);
+  ctx.font=`${CH}px 'Courier New',monospace`;
+  // back to the portfolio: a real button, always on
+  //const bx=W-BACK_PAD-BACK_W,by=H-BACK_PAD-BACK_H,on=hot==='back';
+  //ctx.fillStyle=on?'rgb(255,255,255)':'rgba(0,0,0,0.7)';ctx.fillRect(bx,by,BACK_W,BACK_H);
+  //ctx.strokeStyle='rgb(255,255,255)';ctx.lineWidth=1;ctx.strokeRect(bx+0.5,by+0.5,BACK_W-1,BACK_H-1);
+  //ctx.font=`300 20px 'Fira Sans',sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+  //ctx.fillStyle=on?'rgb(0,0,0)':'rgb(255,255,255)';
+  //ctx.fillText(BACK_LABEL,bx+BACK_W/2,by+BACK_H/2+1);
+  //ctx.textAlign='left';ctx.textBaseline='top';
+  //ctx.font=`${CH}px 'Courier New',monospace`;
+}
+
+// click: HUD first, then bodies in the main view
 let lastCam=null;
-const HUD_NAMES=['Overview','Sol','Mercury','Venus','Earth','Mars','Jupiter','Saturn','Uranus'];
-const HUD_W=CW*14;
 cvs.addEventListener('click',e=>{
   if(!lastCam||dragMoved)return;
   const rect=cvs.getBoundingClientRect();
   const mx=e.clientX-rect.left,my=e.clientY-rect.top;
-  // HUD list items
-  for(let i=0;i<HUD_NAMES.length;i++){
-    const hy=CH*(i+1);
-    if(mx>=0&&mx<HUD_W&&my>=hy&&my<hy+CH){scrollTgt=i*SS;scrollVel=0;return;}
+  const locked=document.pointerLockElement===cvs;
+  if(!locked){
+    const hit=hudHit(mx,my);
+    if(hit==='back'){location.href=BACK_HREF;return;}
+    if(hit==='fly'){mode==='fly'?exitFly():enterFly();return;}
+    if(hit!=null){goTo(hit);return;}
   }
+  if(mode==='fly'){if(!locked&&cvs.requestPointerLock){try{const p=cvs.requestPointerLock();if(p&&p.catch)p.catch(()=>{});}catch(err){}}return;}
   // planet bodies
   for(let bi=0;bi<BODIES.length;bi++){
     const proj=projectPt(bodyPos[bi],lastCam);if(!proj)continue;
@@ -238,11 +495,7 @@ cvs.addEventListener('click',e=>{
     const d2=(mx-px)**2+(my-py)**2;
     const viewDist=Math.max(0.1,len(sub(bodyPos[bi],lastCam.pos)));
     const screenR=Math.max(20,BODIES[bi].r/viewDist*(GW*CW*0.5)/lastCam.tanW);
-    if(d2<screenR*screenR){
-      scrollTgt=clamp(bi===0?SS:(bi+1)*SS,0,SMAX);
-      scrollVel=0;
-      break;
-    }
+    if(d2<screenR*screenR){goTo(bi+1);break;}
   }
 });
 
@@ -258,9 +511,18 @@ function buildCam(pos,tgt,fovDeg){
   const tanW=tanH*aspect;
   return{pos,fwd,rgt,up,tanW,tanH};
 }
-function getRay(cx,cy,cam){
-  const u=(cx+0.5)/GW*2-1,v=1-(cy+0.5)/GH*2;
-  return norm(add(add(cam.fwd,mul(cam.rgt,u*cam.tanW)),mul(cam.up,v*cam.tanH)));
+// fills the shared ray buffer; one normalised direction per cell, no allocation
+function buildRays(cam){
+  const f=cam.fwd,r=cam.rgt,u=cam.up;
+  let k=0;
+  for(let cy=0;cy<GH;cy++){
+    const v=(1-(cy+0.5)/GH*2)*cam.tanH;
+    for(let cx=0;cx<GW;cx++){
+      const s=((cx+0.5)/GW*2-1)*cam.tanW;
+      const x=f[0]+r[0]*s+u[0]*v,y=f[1]+r[1]*s+u[1]*v,z=f[2]+r[2]*s+u[2]*v,il=1/Math.sqrt(x*x+y*y+z*z);
+      rays[k++]=x*il;rays[k++]=y*il;rays[k++]=z*il;
+    }
+  }
 }
 function projectPt(p,cam){
   const d=sub(p,cam.pos);
@@ -285,11 +547,509 @@ function rayDisk(ro,rd,cenY,r1,r2,cenX,cenZ){
   return(d2>=r1*r1&&d2<=r2*r2)?t:-1;
 }
 
-// --- stars ---
-const STARS=[];
-for(let i=0;i<280;i++)STARS.push([fhash(i,0,77),fhash(i,0,88),fhash(i,0,99)]);
+// ring plane through cen with unit normal n; returns t and leaves the hit's radius in ringRho
+let ringRho=0;
+function rayRing(ro,rd,cen,n,r1,r2){
+  const dn=dot(rd,n);if(Math.abs(dn)<1e-6)return -1;
+  const t=dot(sub(cen,ro),n)/dn;if(t<0.001)return -1;
+  const q=sub(add(ro,mul(rd,t)),cen);ringRho=len(q);
+  return(ringRho>=r1&&ringRho<=r2)?t:-1;
+}
+const SAT_TILT=26.7*D2R,SAT_AXIS=[-Math.sin(SAT_TILT),Math.cos(SAT_TILT),0];   // same pole bodyFrame() uses
+const ringGap=rho=>rho>1.95&&rho<2.03;                                          // Cassini division, in planet radii
 
-let lastT=performance.now(),globT=0;
+// --- stars: fixed directions on the sky, so they hold still while you look around ---
+const STARS=[];
+for(let i=0;i<1500;i++){
+  const y=fhash(i,0,77)*2-1,a=fhash(i,0,88)*Math.PI*2,s=Math.sqrt(1-y*y);
+  STARS.push([Math.cos(a)*s,y,Math.sin(a)*s,fhash(i,0,99)]);
+}
+
+// --- asteroid belt: small tumbling rocks between Mars and Jupiter ---
+const ROCKS=[];
+for(let i=0;i<140;i++){
+  ROCKS.push({R:74+fhash(i,2,41)*24,ph:fhash(i,3,41)*Math.PI*2,y:(fhash(i,4,41)-0.5)*5,
+    r:0.3+fhash(i,5,41)*0.35,spin:(fhash(i,6,41)-0.5)*0.5,
+    tone:0.75+fhash(i,7,41)*0.35,pos:[0,0,0]});
+}
+for(const k of ROCKS)k.spd=0.0052*Math.pow(85/k.R,1.5);   // inner rocks orbit faster
+const ROCK_COL=[168,152,132],ROCK_CS='<>^v7VkXzA',ROCK_SECT=9;
+// jagged outline: hashed radii at a few angular stations, straight edges between them
+function rockEdge(i,ang){
+  const t=((ang/(Math.PI*2))%1+1)%1*ROCK_SECT,s0=Math.floor(t),f=t-s0;
+  return lerp(0.55+0.6*fhash(i,s0,53),0.55+0.6*fhash(i,(s0+1)%ROCK_SECT,53),f);
+}
+
+// --- Earth surface: returns [r,g,b,brightnessScale] before lighting ---
+function earthSurface(nrm,toSun,viewDir){
+  // into the planet's own frame: undo axial tilt, then spin
+  const x1=nrm[0]*E_CT+nrm[1]*E_ST,y1=-nrm[0]*E_ST+nrm[1]*E_CT,z1=nrm[2];
+  const sp=-globT*E_SPIN,cs=Math.cos(sp),sn=Math.sin(sp);
+  const x=x1*cs+z1*sn,z=-x1*sn+z1*cs,y=y1;
+  // a little noise on the lookup roughens the 2.5 degree coastlines
+  const j1=sNoise(x*21,y*21,z*21)-0.5,j2=sNoise(x*21+9,y*21+4,z*21+7)-0.5;
+  const lat=Math.asin(clamp(y,-1,1))+j1*0.045,lon=-Math.atan2(z,x)+j2*0.045;   // east is to the right with north up
+  const u=((lon/(2*Math.PI)+0.5)%1+1)%1,v=clamp(0.5-lat/Math.PI,0,0.9999);
+  const mx=Math.floor(u*EW),my=Math.floor(v*EH);
+  let cls=EARTH[my*EW+mx];
+  const n=sNoise(x*6,y*6,z*6),al=Math.abs(lat);
+  if(cls===0&&al>1.33+n*0.12)cls=3;                       // polar sea ice
+  let c;
+  if(cls===0){const k=clamp(n*0.6+(1-al/1.57)*0.4,0,1);c=[lerp(18,40,k),lerp(62,112,k),lerp(150,205,k)];}
+  else if(cls===1){
+    c=[lerp(48,92,n),lerp(122,142,n),lerp(52,68,n)];
+    const bo=sstep(0.85,1.15,al);                        // boreal forest into tundra
+    c=lv(c,[82,104,80],bo);
+  }
+  else if(cls===2)c=[lerp(196,226,n),lerp(160,194,n),lerp(100,140,n)];
+  else c=[236,242,250];
+  const lit=dot(nrm,toSun);
+  {
+    const st=STORM[3],night=sstep(0.12,-0.18,lit);
+    if(night>0){
+      const colat=(20+9*st)*D2R,w=(3.5+4*st)*D2R;               // a storm widens the oval and drives it equatorward
+      const n1=ovalBand(x,y,z,E_MAGN,colat,w),n2=ovalBand(x,y,z,E_MAGS,colat,w),o=n1[0]>n2[0]?n1:n2;
+      setAurora(o[0]*(0.3+0.7*st)*night*curtain(x,y,z,11,0.8),[70,255,140],[230,70,170],o[1]);
+    }
+  }
+  // city lights on the night side, only where there is green land
+  if(lit<-0.08&&cls===1&&fhash(mx,my,5)>0.7)return[255,205,120,0.55,true,0,c];
+  // ocean glint
+  let spec=0;
+  if(cls===0&&lit>0){const h=norm(add(toSun,viewDir));spec=Math.pow(Math.max(0,dot(nrm,h)),120)*0.4;}
+  // clouds drift a touch faster than the ground
+  const cp=sp*0.12,cc=Math.cos(cp),sc=Math.sin(cp);
+  const qx=x*cc+z*sc,qz=-x*sc+z*cc;
+  const cn=sNoise(qx*3.2,y*4.4,qz*3.2)*0.55+sNoise(qx*7,y*9,qz*7)*0.30+sNoise(qx*15,y*15,qz*15)*0.15+0.05*Math.cos(lat*6);
+  const cl=sstep(0.60,0.76,cn)*0.85;
+  spec*=1-cl;
+  const under=c;
+  c=lv(c,[246,248,252],cl);
+  return[Math.min(255,c[0]+255*spec),Math.min(255,c[1]+255*spec),Math.min(255,c[2]+255*spec),1+0.15*cl+spec,false,cl/0.85,under];
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Planet surfaces. Each returns [r,g,b,brightnessScale,emissive] before lighting,
+// in the body's own spinning, tilted frame. Spin rates are in proportion to the
+// real day lengths (Earth = E_SPIN), so Jupiter visibly whips round while
+// Mercury barely turns.
+// ─────────────────────────────────────────────────────────────────────────────
+const fbm=(x,y,z)=>sNoise(x,y,z)*0.55+sNoise(x*2.1+3,y*2.1+7,z*2.1+1)*0.30+sNoise(x*4.3+5,y*4.3+2,z*4.3+9)*0.15;
+// tilt about z, then spin about the pole. Negative spin = prograde (east moves right with north up).
+function bodyFrame(nrm,tilt,spin){
+  const ct=Math.cos(tilt),st=Math.sin(tilt);
+  const x1=nrm[0]*ct+nrm[1]*st,y=-nrm[0]*st+nrm[1]*ct,z1=nrm[2];
+  const cs=Math.cos(spin),sn=Math.sin(spin);
+  return[x1*cs+z1*sn,y,-x1*sn+z1*cs];
+}
+const spinY=(x,z,a)=>{const c=Math.cos(a),s=Math.sin(a);return[x*c+z*s,-x*s+z*c];};
+function mapAt(MAP,lon,lat){
+  const u=((lon/(2*Math.PI)+0.5)%1+1)%1,v=clamp(0.5-lat/Math.PI,0,0.9999);
+  return MAP[Math.floor(v*EH)*EW+Math.floor(u*EW)];
+}
+// impact craters: jittered feature points on a 3D lattice; where one sits near the
+// surface it cuts a dark floor, a bright rim, and (if young) a bright ejecta blanket
+function craters(x,y,z,S,seed){
+  const px=x*S,py=y*S,pz=z*S,bx=Math.floor(px-0.5),by=Math.floor(py-0.5),bz=Math.floor(pz-0.5);
+  let m=1;
+  for(let i=0;i<2;i++)for(let j=0;j<2;j++)for(let k=0;k<2;k++){
+    const cx=bx+i,cy=by+j,cz=bz+k,h=fhash(cx*7+cz,cy*13-cz,seed);
+    if(h>0.6)continue;
+    const fx=cx+0.5+(fhash(cx,cy+cz*31,seed+1)-0.5)*0.7,fy=cy+0.5+(fhash(cx+cz*17,cy,seed+2)-0.5)*0.7,fz=cz+0.5+(fhash(cx-cy*5,cz,seed+3)-0.5)*0.7;
+    const rc=0.16+0.32*(h/0.6),t=Math.hypot(px-fx,py-fy,pz-fz)/rc;
+    if(t<0.72)m=Math.min(m,0.70);
+    else if(t<1)m=Math.max(m,1.22);
+    else if(t<2.1&&h<0.12&&m===1)m=1+0.4*(1-(t-1)/1.1);
+  }
+  return m;
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Aurora. Light added on top of the lit surface, set by each planet's surface
+// function through aurOut=[r,g,b,intensity]. What each world really has:
+//   Mercury  none: no atmosphere to glow.
+//   Venus    no magnetic field, so no ovals. After a solar storm the whole night
+//            side glows in diffuse patches of oxygen green.
+//   Earth    ovals about 20 degrees out from the geomagnetic poles (which sit ~10
+//            degrees off the rotation poles, toward Canada). Oxygen green with a
+//            red-violet upper fringe. Always faintly there; a storm brightens it
+//            and pushes it toward the equator.
+//   Mars     no global field. Faint green night-side glow in a storm, plus discrete
+//            patches over the magnetised crust of the southern highlands.
+//   Jupiter  the strongest in the system and permanent, powered by Io rather than
+//            the sun. Tight ovals round magnetic poles ~10 degrees off-axis,
+//            hydrogen violet-blue with pink, plus the glowing footprints where Io's
+//            and Ganymede's flux tubes touch down, tracking the moons.
+//   Saturn   magnetic axis almost exactly on the spin axis, so a centred ring at
+//            ~74 degrees, around the hexagon. Hydrogen pink below, violet above.
+//            Solar-wind driven, so storms light it up.
+//   Uranus   field tilted 59 degrees: no ovals, just patches around magnetic poles
+//            that sit at low latitude. Faint, brightened by storms.
+//   Neptune  field tilted 47 degrees: aurora lands at mid-latitudes, not the poles
+//            (JWST, 2025). Shown in the cyan it is usually rendered in.
+// On the rocky planets it only shows on the night side. On the giants it is allowed
+// to show faintly by day as well, as in the familiar composite images.
+// ─────────────────────────────────────────────────────────────────────────────
+let aurOut=null;
+const dirLL=(latDeg,lonDeg)=>{const a=latDeg*D2R,o=lonDeg*D2R;return[Math.cos(a)*Math.cos(o),Math.sin(a),Math.cos(a)*Math.sin(o)];};
+// band of half-width w at angular distance colat from a pole; second value says which side of the band we are on
+function ovalBand(x,y,z,pole,colat,w){
+  const a=Math.acos(clamp(x*pole[0]+y*pole[1]+z*pole[2],-1,1));
+  return[clamp(1-Math.abs(a-colat)/w,0,1),a<colat];
+}
+const curtain=(x,y,z,f,sp)=>0.4+0.6*sNoise(x*f+globT*sp,y*f,z*f-globT*sp*0.7);
+function setAurora(I,low,high,poleward){
+  if(I<0.04)return;
+  const c=poleward?lv(low,high,0.55):low;                       // the fringe colour sits on the high-altitude (poleward) edge
+  aurOut=[c[0],c[1],c[2],clamp(I,0,1)];
+}
+const E_MAGN=dirLL(80.7,72.7),E_MAGS=dirLL(-80.7,72.7+180);
+const J_MAGN=dirLL(80,200),J_MAGS=dirLL(-87,30);
+const U_MAGN=dirLL(31,0),U_MAGS=dirLL(-31,180);
+const N_MAGN=dirLL(43,0),N_MAGS=dirLL(-43,180);
+
+// MERCURY: airless, grey-brown, saturated with craters, a few young rayed ones,
+// darker smooth plains. 59-day rotation: effectively still.
+function mercurySurface(nrm){
+  const[x,y,z]=bodyFrame(nrm,0.03*D2R,-globT*E_SPIN/58.6);
+  const plains=sstep(0.52,0.66,fbm(x*1.6+4,y*1.6,z*1.6));
+  let c=lv([172,156,138],[118,110,102],plains*0.8);
+  const tex=0.85+0.3*sNoise(x*9,y*9,z*9);
+  const m=craters(x,y,z,3.2,11)*craters(x,y,z,7.5,23)*tex;
+  return[Math.min(255,c[0]*m),Math.min(255,c[1]*m),Math.min(255,c[2]*m),clamp(m,0.6,1.3),false];
+}
+
+// VENUS: the surface is never visible. A bright sulphuric-acid cloud deck that
+// super-rotates (retrograde, ~60x faster than the planet) and shears into a
+// sideways chevron; brighter polar hoods.
+function venusSurface(nrm,toSun){
+  const lat=Math.asin(clamp(nrm[1],-1,1)),al=Math.abs(lat);
+  const drift=globT*0.03*(1-0.35*al);                       // retrograde, slower toward the poles
+  const lon=Math.atan2(nrm[2],nrm[0])+drift+1.25*al;        // the chevron: high latitudes trail behind
+  const cx=Math.cos(lon),cz=Math.sin(lon),cl=Math.cos(lat);
+  const n=fbm(cx*cl*2.2,nrm[1]*5.5,cz*cl*2.2)*0.7+sNoise(cx*cl*6,nrm[1]*16,cz*cl*6)*0.3;
+  const dark=sstep(0.42,0.66,n)*(1-sstep(1.0,1.25,al));
+  let c=lv([242,228,182],[204,170,112],dark);
+  c=lv(c,[250,242,215],sstep(1.05,1.3,al)*0.7);
+  if(STORM[2]>0.02){
+    const night=sstep(0.1,-0.2,dot(nrm,toSun));
+    setAurora(STORM[2]*night*0.4*sstep(0.5,0.75,fbm(nrm[0]*2.5+globT*0.05,nrm[1]*2.5,nrm[2]*2.5)),[110,255,150],[110,255,150],false);
+  }
+  return[c[0],c[1],c[2],1.05-0.2*dark,false];
+}
+
+// MARS: real albedo markings, rust dust over dark basalt, seasonal polar caps,
+// thin water-ice clouds (polar hoods, a little over the volcanoes) and a slow
+// regional dust haze that washes out the contrast under it.
+function marsSurface(nrm,toSun){
+  const[x,y,z]=bodyFrame(nrm,25.2*D2R,-globT*E_SPIN*0.975);
+  const j1=sNoise(x*19,y*19,z*19)-0.5,j2=sNoise(x*19+6,y*19+2,z*19+8)-0.5;
+  const lat=Math.asin(clamp(y,-1,1))+j1*0.05,lon=-Math.atan2(z,x)+j2*0.05,al=Math.abs(lat);
+  const a=mapAt(MARS,lon,lat),n=sNoise(x*7,y*7,z*7);
+  const PAL=[[98,52,42],[152,80,54],[198,110,70],[228,152,102]];
+  let c=lv(PAL[a],PAL[Math.min(3,a+1)],n*0.6);
+  let scale=(0.9+0.2*n)*(lat<-0.2?craters(x,y,z,6,37):1);   // the southern highlands are the cratered half
+  const capN=sstep(1.30,1.38,lat+n*0.08),capS=sstep(1.42,1.48,-lat+n*0.06);
+  c=lv(c,[244,240,236],Math.max(capN,capS));
+  const dust=sstep(0.60,0.78,fbm(x*1.3+globT*0.004,y*1.3,z*1.3+11))*0.55*(1-capN)*(1-capS);
+  c=lv(c,[216,158,108],dust);
+  const[qx,qz]=spinY(x,z,globT*0.004);
+  const ice=sstep(0.58,0.76,fbm(qx*3.5,y*5,qz*3.5))*(0.12+0.5*sstep(0.85,1.25,al));
+  const under=c;
+  c=lv(c,[238,234,232],ice);
+  {
+    const night=sstep(0.1,-0.2,dot(nrm,toSun)),st=STORM[4];
+    if(night>0){
+      const lonD=((lon/D2R)%360+360)%360,ld=lat/D2R;               // crustal fields: southern highlands around 180 E
+      const crust=sstep(-25,-40,ld)*sstep(-82,-70,ld)*sstep(130,155,lonD)*(1-sstep(205,230,lonD));
+      const patch=crust*sstep(0.5,0.68,sNoise(x*9,y*9,z*9))*(0.25+0.75*st);
+      setAurora(Math.max(patch,st*0.12*curtain(x,y,z,4,0.3))*night,[110,255,150],[110,255,150],false);
+    }
+  }
+  return[c[0],c[1],c[2],scale*(1+0.2*ice),false,ice,under];
+}
+
+// JUPITER: ammonia-cloud zones (bright, high) and belts (brown, deeper) at their real
+// latitudes, alternating jets shearing the bands past each other, turbulent edges,
+// blue-grey festoons in the equatorial zone, the Great Red Spot in the SEB's southern
+// edge with its pale hollow, and a 9.9 h day.
+const JUP=[ // [southern edge in degrees, colour]
+  [-90,[112,100,96]],[-62,[196,182,160]],[-50,[150,122,98]],[-41,[214,200,176]],[-33,[162,126,96]],[-27,[232,218,192]],
+  [-20,[170,112,76]],[-7,[238,224,194]],[7,[152,96,66]],[18,[228,212,186]],[24,[172,126,92]],[31,[210,196,172]],
+  [40,[150,126,102]],[49,[190,176,156]],[61,[112,104,102]],[91,null]];
+function bandColour(T,ld){
+  let i=0;while(ld>=T[i+1][0])i++;
+  const c=T[i][1],w=1.6;
+  if(i>0&&ld-T[i][0]<w)return lv(T[i-1][1],c,0.5+0.5*(ld-T[i][0])/w);
+  if(T[i+1][1]&&T[i+1][0]-ld<w)return lv(c,T[i+1][1],0.5-0.5*(T[i+1][0]-ld)/w);
+  return c;
+}
+const GRS_LAT=-22*D2R;
+function jupiterSurface(nrm,toSun){
+  const[x0,y,z0]=bodyFrame(nrm,3.1*D2R,0);
+  const lat=Math.asin(clamp(y,-1,1)),ld0=lat/D2R;
+  const base=globT*E_SPIN*2.42;                              // 9.9 h day
+  const jet=Math.sin(ld0*0.27)*0.012*globT;                 // alternating zonal jets
+  const[x,z]=spinY(x0,z0,-(base+jet));
+  // turbulence is stretched along longitude, and folds the band edges
+  const t1=fbm(x*3,y*14,z*3),t2=sNoise(x*9,y*30,z*9);
+  const ld=clamp(ld0+(t1-0.5)*7+(t2-0.5)*2.5,-89.9,89.9);
+  let c=bandColour(JUP,ld);
+  c=lv(c,mul(c,0.82),sstep(0.5,0.8,t2));                     // streaks inside a band
+  if(ld0>2&&ld0<9){const f=sstep(0.62,0.8,sNoise(x*5+2,y*9,z*5));c=lv(c,[150,160,178],f*0.6);} // festoons
+  // Great Red Spot, fixed in the frame of the SEB
+  const[gx,gz]=spinY(x0,z0,-base);
+  const dLon=wrapPi(Math.atan2(gz,gx)-1.0),dLat=lat-GRS_LAT;
+  const gd=(dLon/0.24)**2+(dLat/0.11)**2;
+  if(gd<2.2){
+    if(gd<1){const sw=0.85+0.3*sNoise(gx*18+Math.atan2(dLat,dLon)*2,y*18,gz*18);c=lv(c,[214*sw,92*sw,56*sw],clamp((1-gd)*2.2,0,0.92));}
+    else c=lv(c,[236,222,196],(1-(gd-1)/1.2)*0.7);           // the hollow
+  }
+  {
+    const vis=Math.max(0.4,sstep(0.1,-0.2,dot(nrm,toSun)));
+    const n1=ovalBand(gx,y,gz,J_MAGN,15*D2R,2.6*D2R),n2=ovalBand(gx,y,gz,J_MAGS,13*D2R,2.4*D2R),o=n1[0]>n2[0]?n1:n2;
+    let I=o[0]*(0.75+0.25*STORM[5])*curtain(gx,y,gz,14,0.5),pw=o[1];
+    // satellite footprints: the spot sits where the moon's field line lands, a little equatorward of the oval, and follows the moon
+    for(const[mi,colat]of[[3,20],[5,16.5]]){
+      const mp=sub(bodyPos[BODIES.length+mi],bodyPos[5]),a=Math.atan2(mp[2],mp[0]);
+      for(const sgn of[1,-1]){
+        const f=dirLL(sgn*(90-colat),a/D2R),d=Math.acos(clamp(dot(nrm,f),-1,1));
+        if(d<0.035){I=Math.max(I,1);pw=false;}
+      }
+    }
+    setAurora(I*vis,[150,110,255],[255,120,200],!pw);
+  }
+  const lum=(c[0]+c[1]+c[2])/600;
+  return[c[0],c[1],c[2],0.7+0.45*lum,false];
+}
+
+// SATURN: tilted 26.7 degrees with its rings; the same banding under a thick ammonia haze, so everything is butterscotch
+// and low-contrast; a broad bright equatorial zone; the north polar hexagon.
+const SAT=[[-90,[150,150,138]],[-70,[196,176,132]],[-55,[214,194,150]],[-40,[200,176,130]],[-24,[222,202,156]],[-12,[238,222,178]],
+  [12,[222,202,156]],[24,[198,174,128]],[40,[214,194,150]],[55,[194,174,132]],[70,[168,166,148]],[91,null]];
+function saturnSurface(nrm,toSun){
+  const[x0,y,z0]=bodyFrame(nrm,SAT_TILT,0);                  // 26.7 degree tilt, shared with the ring plane
+  const lat=Math.asin(clamp(y,-1,1)),ld0=lat/D2R;
+  const a=-(globT*E_SPIN*2.25+Math.sin(ld0*0.2)*0.01*globT);
+  const[x,z]=spinY(x0,z0,a);
+  const t1=fbm(x*2.5,y*10,z*2.5);
+  let c=bandColour(SAT,clamp(ld0+(t1-0.5)*4,-89.9,89.9));
+  c=lv(c,[226,208,164],0.35);                                // the haze flattens it
+  if(ld0>72){                                                // hexagon: six straight sides at ~78N
+    const colat=90-ld0,lon=((Math.atan2(z,x)/D2R)%60+60)%60-30;
+    const edge=12*Math.cos(30*D2R)/Math.cos(lon*D2R);
+    if(colat<edge){c=lv([92,108,116],[132,144,138],colat/edge);if(colat<1.6)c=[60,70,84];}
+    if(Math.abs(colat-edge)<0.9)c=[232,216,172];
+  }
+  {
+    const vis=Math.max(0.4,sstep(0.1,-0.2,dot(nrm,toSun))),st=STORM[6];
+    const o=ovalBand(x0,Math.abs(y),z0,[0,1,0],(16-2*st)*D2R,(2.5+2.5*st)*D2R);        // field axis = spin axis, so the rings are centred
+    setAurora(o[0]*(0.4+0.6*st)*vis*curtain(x,y,z,12,0.4),[255,110,150],[170,110,255],o[1]);
+  }
+  return[c[0],c[1],c[2],0.78+0.3*(c[0]+c[1]+c[2])/700,false];
+}
+
+// URANUS: methane absorbs the red, leaving a nearly featureless cyan ball. It lies on
+// its side (97.8 degrees), so the faint banding and the bright polar hood are arranged
+// around an axis that points along its orbit, not up. Rare small white methane clouds.
+function uranusSurface(nrm,toSun){
+  const[x,y,z]=bodyFrame(nrm,97.8*D2R,globT*E_SPIN*1.39);
+  const lat=Math.asin(clamp(y,-1,1));
+  let c=[158,222,226];
+  c=lv(c,[138,206,216],0.5+0.5*Math.sin(lat*9));             // barely-there bands
+  const ax=[Math.sin(97.8*D2R),Math.cos(97.8*D2R),0];
+  const sunward=dot(ax,toSun)>0?1:-1;                         // whichever pole is in its decades-long summer
+  c=lv(c,[206,242,240],sstep(0.75,1.2,lat*sunward)*0.8);
+  const cl=sstep(0.80,0.88,sNoise(x*3,y*16,z*3))*sstep(0.35,0.5,Math.abs(lat))*(1-sstep(0.75,0.9,Math.abs(lat)));
+  const under=c;
+  c=lv(c,[244,250,250],cl);
+  {
+    const vis=Math.max(0.35,sstep(0.1,-0.2,dot(nrm,toSun))),st=STORM[7];
+    const a=Math.max(x*U_MAGN[0]+y*U_MAGN[1]+z*U_MAGN[2],x*U_MAGS[0]+y*U_MAGS[1]+z*U_MAGS[2]);
+    const spot=sstep(0.955,0.985,a)*sstep(0.35,0.6,sNoise(x*12+globT*0.2,y*12,z*12));       // patches, not rings
+    setAurora(spot*(0.3+0.7*st)*vis,[215,150,255],[215,150,255],false);
+  }
+  return[c[0],c[1],c[2],1+0.12*cl,false,cl,under];
+}
+
+// NEPTUNE: deeper azure than Uranus and far more active. Fastest winds in the system
+// (retrograde, so the clouds run against the spin), a Great Dark Spot with bright
+// methane-ice cirrus pinned to its southern rim, and long white streaks along the
+// mid-latitudes. 28 degree tilt.
+function neptuneSurface(nrm,toSun){
+  const[x0,y,z0]=bodyFrame(nrm,28.3*D2R,0);
+  const lat=Math.asin(clamp(y,-1,1)),ld=lat/D2R,base=globT*E_SPIN*1.49;
+  const[x,z]=spinY(x0,z0,-base+globT*0.035*Math.cos(lat*1.5)); // winds blow westward, hardest at the equator
+  let c=lv([72,120,238],[54,94,208],0.5+0.5*Math.sin(ld*0.16+1));
+  c=lv(c,[36,66,170],sstep(38,48,-ld)*(1-sstep(62,72,-ld))*0.7);  // dark southern belt
+  const[gx,gz]=spinY(x0,z0,-base+globT*0.012);
+  const dLon=wrapPi(Math.atan2(gz,gx)-0.6),dLat=lat+20*D2R;
+  const gd=(dLon/0.30)**2+(dLat/0.13)**2;
+  if(gd<1)c=lv(c,[26,44,128],clamp((1-gd)*2.5,0,0.9));
+  const comp=sstep(1.0,0.6,((dLon-0.05)/0.26)**2+((dLat+0.17)/0.04)**2);  // companion cirrus
+  const streak=sstep(0.74,0.86,sNoise(x*2.2,y*26,z*2.2))*sstep(18,26,Math.abs(ld))*(1-sstep(48,58,Math.abs(ld)));
+  const w=Math.max(comp,streak*0.9);
+  const under=c;
+  c=lv(c,[238,244,255],w);
+  {
+    const vis=Math.max(0.35,sstep(0.1,-0.2,dot(nrm,toSun))),st=STORM[8];
+    const[mx,mz]=spinY(x0,z0,-base);
+    const n1=ovalBand(mx,y,mz,N_MAGN,32*D2R,9*D2R),n2=ovalBand(mx,y,mz,N_MAGS,32*D2R,9*D2R);
+    const I=Math.max(n1[0],n2[0])*sstep(0.45,0.7,sNoise(mx*7+globT*0.15,y*7,mz*7));          // broken arcs across the mid-latitudes
+    setAurora(I*(0.35+0.65*st)*vis,[110,255,235],[110,255,235],false);
+  }
+  return[c[0],c[1],c[2],1+0.2*w,false,w,under];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Moon surfaces, in a tidally locked frame (the same face always toward the parent).
+// ─────────────────────────────────────────────────────────────────────────────
+const crack=(x,y,z,f,w)=>Math.abs(sNoise(x*f,y*f,z*f)-0.5)<w;        // noise zero-crossings read as fracture lines
+function moonSurface(m,nrm){
+  const[x,z]=spinY(nrm[0],nrm[2],-m.ang),y=nrm[1];
+  let c,scale=1;
+  switch(m.kind){
+    case'luna':{                                                     // bright highlands, dark basalt maria on the near side, rayed craters
+      const mare=sstep(0.50,0.60,fbm(x*1.9+2,y*1.9,z*1.9))*sstep(-0.35,0.35,-x);
+      c=lv([186,184,178],[92,94,102],mare*0.9);
+      scale=(mare>0.5?craters(x,y,z,6,71):craters(x,y,z,3,61)*craters(x,y,z,7,67))*(0.9+0.2*sNoise(x*12,y*12,z*12));
+      break;}
+    case'rock':c=[118,104,94];scale=craters(x,y,z,2.4,83)*(0.8+0.4*sNoise(x*5,y*5,z*5));break;
+    case'io':{                                                       // sulphur yellows, SO2 frost, red fallout rings, black calderas
+      c=lv([236,210,98],[216,150,58],fbm(x*2.2,y*2.2,z*2.2));
+      c=lv(c,[244,240,214],sstep(0.62,0.74,sNoise(x*3+9,y*3,z*3)));
+      const v=sNoise(x*6+4,y*6+1,z*6+8);
+      if(v>0.70)c=lv(c,[206,70,36],sstep(0.70,0.76,v));
+      if(v>0.80)c=[52,36,28];
+      break;}
+    case'europa':{                                                   // water ice, criss-crossed by red-brown lineae
+      c=lv([236,230,214],[196,170,140],sstep(0.5,0.75,fbm(x*2,y*2,z*2)));
+      if(crack(x,y,z,3.2,0.022)||crack(x+5,y+3,z+1,5.5,0.018))c=[150,92,66];
+      break;}
+    case'ganymede':{                                                 // old dark terrain, younger bright grooved terrain, fresh bright craters
+      const light=sstep(0.46,0.54,fbm(x*2.4+1,y*2.4,z*2.4));
+      c=lv([104,94,84],[176,168,154],light);
+      if(light>0.5)c=mul(c,0.9+0.12*Math.sin((x*1.3+y+z*0.7)*46+sNoise(x*3,y*3,z*3)*8));
+      scale=craters(x,y,z,4.5,91);if(scale>1.1)c=lv(c,[228,224,214],0.7);
+      break;}
+    case'callisto':{                                                 // the most cratered surface known: dark, peppered with bright ice
+      c=[86,76,66];const k=craters(x,y,z,4,97)*craters(x,y,z,8.5,101);
+      if(k>1.08)c=lv(c,[214,206,190],clamp((k-1.05)*3,0,0.9));scale=clamp(k,0.8,1.2);
+      break;}
+    case'titan':c=lv([232,168,78],[190,122,52],sstep(0.1,0.9,y)*0.7+0.15*fbm(x*1.5,y*4,z*1.5));break;   // orange photochemical haze, darker northern hood
+    case'mimas':{                                                    // Herschel: one crater a third the moon's width, with a central peak
+      c=[184,184,182];scale=craters(x,y,z,4,107);
+      const a=Math.acos(clamp(z,-1,1));
+      if(a<0.52){scale=a<0.06?1.25:a<0.44?0.66:1.28;}
+      break;}
+    case'enceladus':c=[246,249,252];if(y<-0.55&&crack(x,y,z,5,0.03))c=[132,196,232];scale=0.97+0.06*sNoise(x*8,y*8,z*8);break;  // fresh ice, tiger stripes at the south pole
+    case'iapetus':c=lv([222,216,206],[58,46,38],sstep(-0.15,0.2,z+0.25*(fbm(x*3,y*3,z*3)-0.5)-0.35*y*y));scale=craters(x,y,z,4,113);break; // leading side coated dark
+    case'miranda':{                                                  // patchwork: cratered plains cut by ridged coronae
+      c=[172,174,178];const cor=sstep(0.56,0.6,sNoise(x*1.8+3,y*1.8,z*1.8));
+      if(cor>0)c=lv(c,mul(c,0.68+0.3*Math.sin((x-y)*40)),cor);else scale=craters(x,y,z,4,127);
+      break;}
+    case'icy':c=[150,147,143];scale=craters(x,y,z,4,131)*craters(x,y,z,8,137);break;
+    case'triton':{                                                   // pink nitrogen-ice cap, cantaloupe terrain, dark geyser streaks
+      const cap=sstep(-0.05,0.15,-y+0.2*(sNoise(x*4,y*4,z*4)-0.5));
+      const cell=sNoise(x*11,y*11,z*11);
+      c=lv(lv([150,160,154],[176,182,172],sstep(0.4,0.6,cell)),[242,222,214],cap);
+      if(cap>0.6&&sNoise(x*5,y*22,z*5)>0.8)c=[96,82,80];
+      break;}
+    default:c=[160,160,160];
+  }
+  if(m.tint)c=[c[0]*m.tint[0],c[1]*m.tint[1],c[2]*m.tint[2]];
+  return[Math.min(255,c[0]*scale),Math.min(255,c[1]*scale),Math.min(255,c[2]*scale),clamp(scale,0.6,1.3),false];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The active sun. A handful of active regions ride the (25-day) rotation in the
+// two sunspot belts. Each is a bipolar spot pair: umbra, penumbra, and a coronal
+// loop arching from one spot to the other, since that is what the loops are,
+// plasma strung along field lines between opposite polarities. Each region
+// cycles: loop grows, holds, swells and snaps; some cycles end in a flare, a
+// white flash at the footpoints and a spray of ejecta.
+// ─────────────────────────────────────────────────────────────────────────────
+const SUN_SPIN=0.02;
+const REGIONS=Array.from({length:9},(_,k)=>{
+  const lat=(k%2?-1:1)*(9+fhash(k,1,211)*22)*D2R,lon=fhash(k,2,211)*Math.PI*2,sep=0.11+fhash(k,3,211)*0.07;
+  const dir=(la,lo)=>[Math.cos(la)*Math.cos(lo),Math.sin(la),Math.cos(la)*Math.sin(lo)];
+  return{a0:dir(lat,lon),b0:dir(lat+(fhash(k,4,211)-0.5)*0.05,lon+sep),size:0.7+fhash(k,5,211)*0.6,
+         T:30+fhash(k,6,211)*26,off:fhash(k,7,211)*60+k*9,h:0.07+fhash(k,8,211)*0.15,
+         a:[0,0,0],b:[0,0,0],n:[0,0,0],loop:0,rise:1,flare:-1,flash:0,cyc:0};
+});
+// Coronal mass ejections: the flare's jet keeps going as an expanding cloud that crosses the
+// inner system. It leaves radially, flattened toward the ecliptic; if an inner planet happens to
+// be roughly in the line of fire it is aimed to arrive where that planet will be, so now and then
+// one gets hit. A hit raises a storm on the planet: aurora on Earth, a flushed atmosphere elsewhere.
+const CMES=[],CME_LIFE=26,CME_REACH=78,CME_CONE=0.33;   // CME_CONE: half-angle (rad) inside which a planet counts as hit
+const STORM=new Float32Array(BODIES.length);
+function launchCME(g){
+  let dir=norm([g.n[0],g.n[1]*0.3,g.n[2]]);
+  for(let b=1;b<=4;b++){
+    const B=BODIES[b],tArr=CME_LIFE*Math.pow(B.orbitR/CME_REACH,1/0.85),a=(globT+tArr)*B.spd+B.ph;
+    const tgt=[Math.cos(a),0,Math.sin(a)];
+    if(dot(tgt,norm([dir[0],0,dir[2]]))>Math.cos(0.6)){dir=tgt;break;}
+  }
+  CMES.push({dir,t0:globT,seed:(globT*10)|0,front:0});
+}
+function updateSun(dt){
+  const R=BODIES[0].r,ang=-globT*SUN_SPIN;
+  for(const g of REGIONS){
+    const[ax,az]=spinY(g.a0[0],g.a0[2],ang),[bx,bz]=spinY(g.b0[0],g.b0[2],ang);
+    g.a=[ax,g.a0[1],az];g.b=[bx,g.b0[1],bz];g.n=norm(add(g.a,g.b));
+    const tt=(globT+g.off)/g.T,p=tt%1;g.cyc=Math.floor(tt);
+    const erupts=fhash(g.cyc,Math.round(g.T*10),223)>0.86;   // most cycles end quietly
+    g.loop=sstep(0,0.08,p)*(1-sstep(0.78,0.9,p)*(erupts?1:0.0)-(erupts?0:sstep(0.9,1,p)));
+    g.rise=1+(erupts?1.2:0.25)*sstep(0.5,0.72,p);
+    g.flare=erupts&&p>0.68?(p-0.68)/0.32:-1;
+    g.flash=erupts?sstep(0.64,0.69,p)*(1-sstep(0.70,0.80,p)):0;
+    if(g.flare>=0&&!g.was)launchCME(g);
+    g.was=g.flare>=0;
+  }
+  for(let i=CMES.length-1;i>=0;i--){
+    const c=CMES[i],age=globT-c.t0;
+    c.front=R+CME_REACH*Math.pow(age/CME_LIFE,0.85);
+    if(c.front>350){CMES.splice(i,1);continue;}                     // the shock carries on past Neptune long after the visible cloud has faded
+    // anything the front sweeps over gets a geomagnetic storm
+    for(let b=1;b<BODIES.length;b++){
+      const bp=bodyPos[b],d=len(bp);
+      if(Math.abs(d-c.front*0.95)<5&&dot(norm(bp),c.dir)>Math.cos(CME_CONE))STORM[b]=1;
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Halley's comet: a real Kepler orbit (solved each frame), very eccentric,
+// retrograde, tipped 18 degrees out of the ecliptic. It crawls out past Neptune
+// and whips round the sun inside Venus's orbit. Near the sun it grows a coma and
+// two tails: a straight blue ion tail pointing dead away from the sun, and a
+// broad, curved, pale dust tail that lags back along the orbit.
+// ─────────────────────────────────────────────────────────────────────────────
+const HALLEY={q:23,Q:352,T:210,M0:-1.15,argp:0.9,inc:18*D2R,pos:[0,0,0],prev:[0,0,0],vel:[0,0,-1],act:0};
+HALLEY.a=(HALLEY.q+HALLEY.Q)/2;HALLEY.e=(HALLEY.Q-HALLEY.q)/(HALLEY.Q+HALLEY.q);
+function halleyAt(E){
+  const H=HALLEY,xp=H.a*(Math.cos(E)-H.e),yp=H.a*Math.sqrt(1-H.e*H.e)*Math.sin(E);
+  const[x,z]=spinY(xp,-yp,H.argp);                                   // -yp: retrograde
+  return[x,-z*Math.sin(H.inc),z*Math.cos(H.inc)];
+}
+function updateHalley(){
+  const H=HALLEY,M=wrapPi(H.M0+globT*2*Math.PI/H.T);
+  let E=M+H.e*Math.sin(M);
+  for(let i=0;i<8;i++)E-=(E-H.e*Math.sin(E)-M)/(1-H.e*Math.cos(E)); // Newton on Kepler's equation
+  const p=halleyAt(E),d=sub(p,H.pos);
+  if(len2(d)>1e-10)H.vel=norm(d);
+  H.pos=p;
+  H.act=clamp(Math.pow(H.q/len(p),1.15),0,1);                        // how hard the sun is cooking it
+  HALLEY_ROCK.pos=p;
+}
+const HALLEY_ROCK={R:0,ph:0,y:0,r:0.13,spin:0.25,tone:0.7,pos:[0,0,0],spd:0,comet:true};
+ROCKS.push(HALLEY_ROCK);
+
+const SURFACE=[null,mercurySurface,venusSurface,earthSurface,marsSurface,jupiterSurface,saturnSurface,uranusSurface,neptuneSurface];
+
+let lastT=performance.now(),globT=0,titleA=1,hintT=0;
 
 function frame(now){
   const dt=Math.min((now-lastT)/1000,0.05);
@@ -302,67 +1062,38 @@ function frame(now){
     bodyPos[bi][2]=Math.sin(a)*b.orbitR;
   }
 
-  // scroll physics — spring-damper snaps scrollTgt to nearest stop
-  const sn=Math.round(scrollTgt/SS)*SS;
-  scrollVel+=(sn-scrollTgt)*4*dt;
-  scrollVel*=Math.exp(-8.0*dt); // overdamped — settles without oscillation
-  scrollTgt+=scrollVel*dt;
-  scrollTgt=clamp(scrollTgt,0,SMAX);
-  // scrollPos follows slowly so the camera travels the full interpolated
-  // path between stops — this is what makes transit feel cinematic
-  scrollPos=lerp(scrollPos,scrollTgt,clamp(dt*3.5,0,1));
-  scrollPos=clamp(scrollPos,0,SMAX);
+  for(const m of MOONS){
+    m.ang=globT*m.spd+m.ph;
+    const c=Math.cos(m.ang)*m.a,sn=Math.sin(m.ang)*m.a,pp=bodyPos[m.par],bp=bodyPos[m.id];
+    bp[0]=pp[0]+m.u[0]*c+m.v[0]*sn;bp[1]=pp[1]+m.u[1]*c+m.v[1]*sn;bp[2]=pp[2]+m.u[2]*c+m.v[2]*sn;
+  }
+  for(let i=0;i<ROCKS.length;i++){
+    const k=ROCKS[i];if(k.comet)continue;
+    const a=globT*k.spd+k.ph;
+    k.pos[0]=Math.cos(a)*k.R;k.pos[1]=k.y;k.pos[2]=Math.sin(a)*k.R;
+  }
+  updateHalley();
+  updateSun();
+  for(let b=1;b<STORM.length;b++)STORM[b]=Math.max(0,STORM[b]-dt/9);   // storms die down over a few seconds
 
-  // direct-path camera — always flies from recorded departure to current destination.
-  // Works identically to the sun zoom for any jump size: one smooth lerp A→B.
-  const sf=scrollPos/SS;
-  const nearI=Math.round(sf); // used by HUD / text overlay below
-  const destI=Math.round(scrollTgt/SS);
-  if(destI!==navToI){
-    navFromPos=[...Camera.pos];navFromTgt=[...Camera.tgt];navFromFov=Camera.fov;
-    navFromScroll=scrollPos;navToI=destI;
-    // init orbit angles from default view direction so arrival is seamless
-    if(destI>=2&&destI<=8){
-      const bd=stopCamDir(bodyPos[destI-1]);
-      orbitYaw=Math.atan2(bd[0],bd[2]);
-      orbitPitch=Math.asin(clamp(bd[1],-1,1));
+  if(mode==='fly')updateFly(dt);else updateTour(dt);
+
+  // which stop the info box and map highlight refer to, and how resolved it is
+  let infoI=-1,prox=0,currentI=-1;
+  if(mode==='fly'){
+    for(let i=0;i<BODIES.length;i++){
+      const d=len(sub(bodyPos[i],Camera.pos))/BODIES[i].r,p=clamp(1-(d-2.5)/4,0,1);
+      if(p>prox){prox=p;infoI=i+1;}
     }
-  }
-  const dest=getStopPreset(navToI);
-  const scrSpan=navToI*SS-navFromScroll;
-  const rawT=Math.abs(scrSpan)<0.01?1:clamp((scrollPos-navFromScroll)/scrSpan,0,1);
-  const easedT=rawT*rawT*(3-2*rawT);
-  inPlanetStop=navToI>=2&&navToI<=8&&rawT>0.97;
-  // During transit, keep orbit angles locked to stopCamDir so the handoff is seamless
-  if(navToI>=2&&navToI<=8&&!inPlanetStop){
-    const bd=stopCamDir(bodyPos[navToI-1]);
-    orbitYaw=Math.atan2(bd[0],bd[2]);
-    orbitPitch=Math.asin(clamp(bd[1],-1,1));
-  }
-  if(inPlanetStop){
-    // orbit mode: position computed from spherical angles, drag rotates them
-    const planet=bodyPos[navToI-1];
-    const v=STOP_VIEW[navToI];
-    const od=[Math.sin(orbitYaw)*Math.cos(orbitPitch),Math.sin(orbitPitch),Math.cos(orbitYaw)*Math.cos(orbitPitch)];
-    const sp=add(planet,mul(od,v.dist));
-    if(!prevInPlanetStop)planetEntryTimer=0;
-    planetEntryTimer+=dt;
-    // lerp rate ramps from transit-speed up to stop-speed over ~2s — no hard snap ever
-    const entryF=Math.min(planetEntryTimer/2.0,1.0);
-    const rate=lerp(Camera.rates.transitPos,Camera.rates.stopPos,entryF*entryF);
-    const lp=clamp(1-Math.exp(-rate*dt),0,1);
-    Camera.pos=lv(Camera.pos,sp,lp);Camera._gPos=[...sp];
-    Camera.tgt=lv(Camera.tgt,planet,lp);Camera._gTgt=[...planet];
-    Camera.fov=lerp(Camera.fov,v.fov,clamp(1-Math.exp(-Camera.rates.stopFov*dt),0,1));
-    prevInPlanetStop=true;
-  }else{
-    prevInPlanetStop=false;
-    Camera.setGoal(lv(navFromPos,dest.pos,easedT),lv(navFromTgt,dest.tgt,easedT),lerp(navFromFov,dest.fov,easedT));
-    Camera.update(dt,rawT>0.97?'stop':'transit');
+  }else if(navT>=1){infoI=currentI=navToI;prox=1;}
+  else{
+    currentI=navT<0.5?navFromI:navToI;
+    if(navT<0.25){infoI=navFromI;prox=1-navT/0.25;}
+    else{infoI=navToI;prox=clamp((navT-0.62)/0.38,0,1);}
   }
 
   ctx.fillStyle='#000';
-  ctx.fillRect(0,0,cvs.width,cvs.height);
+  ctx.fillRect(0,0,W,H);
   ctx.font=`${CH}px 'Courier New',monospace`;
   ctx.textBaseline='top';
 
@@ -371,156 +1102,376 @@ function frame(now){
   const N=GW*GH;
   const grid=new Array(N).fill(null);
   const occ=new Uint8Array(N);
+  const zbuf=new Float32Array(N).fill(1e9);
+  const fillK=new Float32Array(N);
+  const pxPerUnit=(GW*CW*0.5)/cam.tanW;
+  buildRays(cam);
 
   // stars
-  for(const[u,v,br] of STARS){
-    const gx=Math.floor(u*GW),gy=Math.floor(v*GH);
-    if(gx>=0&&gx<GW&&gy>=0&&gy<GH){const b=Math.floor(50+br*110);grid[gy*GW+gx]={ch:'.',r:b,g:b,b:b};}
+  for(const s of STARS){
+    const proj=projectPt([camPos[0]+s[0]*1e4,camPos[1]+s[1]*1e4,camPos[2]+s[2]*1e4],cam);if(!proj)continue;
+    const gx=proj[0],gy=proj[1];
+    if(gx>=0&&gx<GW&&gy>=0&&gy<GH){const b=Math.floor(50+s[3]*110);grid[gy*GW+gx]={ch:'.',r:b,g:b,b:b};}
   }
+
+  // per-body terms that are constant across the frame
+  const NB=RC.length,ocx=new Float64Array(NB),ocy=new Float64Array(NB),ocz=new Float64Array(NB),occ2=new Float64Array(NB);
+  for(let i=0;i<NB;i++){
+    const bp=bodyPos[i];
+    ocx[i]=camPos[0]-bp[0];ocy[i]=camPos[1]-bp[1];ocz[i]=camPos[2]-bp[2];
+    occ2[i]=ocx[i]*ocx[i]+ocy[i]*ocy[i]+ocz[i]*ocz[i]-RC[i].r*RC[i].r;
+  }
+  // only spheres that can touch the view cone are tested per ray
+  const vis=[],halfDiag=Math.atan(Math.hypot(cam.tanW,cam.tanH));
+  for(let i=0;i<NB;i++){
+    const d=Math.sqrt(ocx[i]*ocx[i]+ocy[i]*ocy[i]+ocz[i]*ocz[i]),rr=RC[i].hasRing?RC[i].ringR2:RC[i].r;
+    if(d<=rr*1.01){vis.push(i);continue;}
+    const cosA=-(ocx[i]*cam.fwd[0]+ocy[i]*cam.fwd[1]+ocz[i]*cam.fwd[2])/d;
+    if(Math.acos(clamp(cosA,-1,1))<halfDiag+Math.asin(Math.min(1,rr/d))+0.02)vis.push(i);
+  }
+  // moons that sit sunward of their planet are the only ones that can shadow it
+  for(const b of BODIES)if(b.moons){
+    const ps=norm(mul(bodyPos[b.id],-1));
+    b.shadowers=b.moons.filter(m=>dot(sub(bodyPos[m.id],bodyPos[b.id]),ps)>0);
+  }
+  const shadowed=(hp,ts,c,r)=>{                       // allocation-free ray-sphere occlusion
+    const ox=hp[0]-c[0],oy=hp[1]-c[1],oz=hp[2]-c[2],bq=ox*ts[0]+oy*ts[1]+oz*ts[2];
+    return bq<0&&bq*bq-(ox*ox+oy*oy+oz*oz-r*r)>0;
+  };
+  const sizeK=RC.map((b,i)=>sstep(FILL_SIZE[0],FILL_SIZE[1],b.r/Math.max(0.05,len(sub(bodyPos[i],camPos)))*pxPerUnit/CW));
 
   // --- main raycast ---
   for(let cy=0;cy<GH;cy++){
     for(let cx=0;cx<GW;cx++){
-      const rd=getRay(cx,cy,cam),ro=camPos;
-      let minT=1e9,hitB=null,isRing=false;
+      const k=(cy*GW+cx)*3,rx=rays[k],ry=rays[k+1],rz=rays[k+2];
+      let minT=1e9,hitB=null,isRing=false,rd=null;
+      const ro=camPos;
 
-      for(const body of BODIES){
-        const bp=bodyPos[body.id];
+      for(let vi=0;vi<vis.length;vi++){
+        const i=vis[vi],body=RC[i];
+        const b=ocx[i]*rx+ocy[i]*ry+ocz[i]*rz,disc=b*b-occ2[i];
+        let tS=-1;
+        if(disc>=0){const sq=Math.sqrt(disc);tS=-b-sq;if(tS<0.001)tS=-b+sq;if(tS<0.001)tS=-1;}
         if(body.hasRing){
-          const tR=rayDisk(ro,rd,bp[1],body.ringR1,body.ringR2,bp[0],bp[2]);
-          if(tR>0&&tR<minT){
-            const tS=raySphere(ro,rd,bp,body.r);
-            if(tS<0||tR<tS){minT=tR;hitB=body;isRing=true;}
-          }
+          const bp=bodyPos[i];
+          if(!rd)rd=[rx,ry,rz];
+          let tR=rayRing(ro,rd,bp,SAT_AXIS,body.ringR1,body.ringR2);
+          if(tR>0&&ringGap(ringRho/body.r))tR=-1;
+          if(tR>0&&tR<minT&&(tS<0||tR<tS)){minT=tR;hitB=body;isRing=true;}
         }
-        const tS=raySphere(ro,rd,bp,body.r);
         if(tS>0&&tS<minT){minT=tS;hitB=body;isRing=false;}
       }
 
       if(!hitB)continue;
+      if(!rd)rd=[rx,ry,rz];
       const idx=cy*GW+cx,hbp=bodyPos[hitB.id];
+      zbuf[idx]=minT;
 
       if(isRing){
         const rp=add(ro,mul(rd,minT));
         const toSun=norm(sub(bodyPos[0],rp));
         const inShadow=raySphere(rp,toSun,hbp,hitB.r)>0;
         const h=fhash(cx,cy,hitB.id+100);
-        const bright=inShadow?0.05:clamp(0.55+0.35*h,0.45,0.92);
+        const rho=len(sub(rp,hbp))/hitB.r;
+        const zone=rho<1.53?0.5:rho<1.95?1.08:0.82;               // faint C ring, bright B ring, A ring
+        const bright=inShadow?0.05:clamp((0.55+0.35*h)*zone,0.2,0.98);
         const c=hitB.col;
         let cr=Math.floor(c[0]*bright),cg=Math.floor(c[1]*bright),cb=Math.floor(c[2]*bright);
         const bg=grid[idx];
-        if(bg){const op=0.6;cr=Math.floor(bg.r*(1-op)+cr*op);cg=Math.floor(bg.g*(1-op)+cg*op);cb=Math.floor(bg.b*(1-op)+cb*op);}
+        if(bg){const op=rho<1.53?0.35:0.6;cr=Math.floor(bg.r*(1-op)+cr*op);cg=Math.floor(bg.g*(1-op)+cg*op);cb=Math.floor(bg.b*(1-op)+cb*op);}
         const rc=inShadow?'.,`\'':'.-~=oO*+';
         grid[idx]={ch:rc[Math.floor(h*rc.length)],r:cr,g:cg,b:cb};
         occ[idx]=2;
       }else{
         const hp=add(ro,mul(rd,minT)),nrm=norm(sub(hp,hbp));
         const toSun=norm(sub(bodyPos[0],hp));
-        let br,cr,cg,cb;
+        let br,cr,cg,cb,under=null;
         if(hitB.sun){
-          const ft=globT*0.04;
-          const sc1=3.5,sc2=7.0,sc3=14.0;
-          const n1=sNoise(nrm[0]*sc1+ft,     nrm[1]*sc1,          nrm[2]*sc1);
-          const n2=sNoise(nrm[0]*sc2,         nrm[1]*sc2+ft*1.3,   nrm[2]*sc2);
-          const n3=sNoise(nrm[0]*sc3,         nrm[1]*sc3,          nrm[2]*sc3+ft*0.7);
-          const ht=clamp(n1*0.55+n2*0.30+n3*0.15,0,1);
-          const htBright=clamp(0.45+ht*0.55,0,1); // raise dark-spot floor
+          // convecting plasma: the noise field is dragged around by a slower one (domain warping), so
+          // cells swirl and fold instead of sliding past. Everything co-rotates with the spots.
+          const ft=globT*0.05,[sx,sz]=spinY(nrm[0],nrm[2],globT*SUN_SPIN),sy=nrm[1];
+          const wx=sNoise(sx*1.8+ft,sy*1.8,sz*1.8)-0.5,wy=sNoise(sx*1.8+7,sy*1.8+ft,sz*1.8+3)-0.5,wz=-(wx+wy)*0.7;
+          const px=sx+wx*0.55,py=sy+wy*0.55,pz=sz+wz*0.55;
+          const n1=sNoise(px*3.5+ft*0.6,py*3.5,pz*3.5);
+          const n2=sNoise(px*8,py*8+ft*1.2,pz*8);
+          const n3=sNoise(px*19+wy*3,py*19,pz*19+ft*1.6);                 // granulation
+          const ht=clamp(n1*0.5+n2*0.3+n3*0.2,0,1);
           const facing=Math.max(0,dot(nrm,norm(sub(camPos,hbp))));
-          const limb=0.88+0.12*facing; // less limb darkening, brighter overall
-          br=clamp(htBright*limb,0,1);
-          cr=Math.floor(lerp(235,255,ht)*limb);
-          cg=Math.floor(lerp(150,240,ht)*limb);
-          cb=Math.floor(lerp(40,120,ht)*limb);
+          const limb=0.93+0.07*facing;
+          br=clamp((0.72+ht*0.28)*limb,0,1);                               // it is the sun: nothing on it is dim
+          cr=Math.floor(255*limb);
+          cg=Math.floor(lerp(176,252,ht)*limb);
+          cb=Math.floor(lerp(48,178,ht*ht)*limb);
+          for(const g of REGIONS){                          // sunspots and flare flash
+            const dn=dot(nrm,g.n);if(dn<0.93)continue;
+            for(const sp of[g.a,g.b]){
+              const wob=1+0.35*(sNoise(nrm[0]*30,nrm[1]*30,nrm[2]*30)-0.5);
+              const a=Math.acos(clamp(dot(nrm,sp),-1,1))/(g.size*wob);
+              if(a<0.066){
+                const um=a<0.034;                            // umbra, else the striated penumbra
+                cr=Math.floor(cr*(um?0.66:0.86));cg=Math.floor(cg*(um?0.42:0.70));cb=Math.floor(cb*(um?0.30:0.55));   // darker than the photosphere, still glowing
+                br*=um?0.6:0.82;
+              }else if(a<0.12){cr=Math.min(255,cr+14);cg=Math.min(255,cg+22);} // faculae: a bright fringe around the group
+            }
+            if(g.flash>0){
+              const f=g.flash*sstep(0.93,0.995,dn);
+              cr=Math.floor(lerp(cr,255,f));cg=Math.floor(lerp(cg,255,f));cb=Math.floor(lerp(cb,235,f));br=lerp(br,1,f);
+            }
+          }
         }else{
-          const diffuse=clamp(0.2+0.8*dot(nrm,toSun),0,1);
-          if(hitB.id>=5&&hitB.id<=7){
+          let diffuse=clamp(0.2+0.8*dot(nrm,toSun),0,1);
+          if(hitB.hasRing&&rayRing(hp,toSun,hbp,SAT_AXIS,hitB.ringR1,hitB.ringR2)>0&&!ringGap(ringRho/hitB.r))
+            diffuse*=ringRho/hitB.r<1.53?0.8:0.45;             // the rings' shadow falls across the globe
+          // gas and ice giants keep the slow interference ripple in their glyph brightness
+          let ripple=1;
+          if(hitB.moon){                                     // in the parent's shadow
+            if(shadowed(hp,toSun,bodyPos[hitB.par],RC[hitB.par].r))diffuse*=0.06;
+          }else if(hitB.moons){                              // a moon's shadow crossing the cloud tops
+            for(const m of hitB.shadowers)if(shadowed(hp,toSun,bodyPos[m.id],m.r)){diffuse*=0.3;break;}
+          }
+          if(hitB.id>=5&&hitB.id<=8){
             const ry=globT*0.006+hitB.id*1.1;
-            const GSRCS=[
-              [Math.cos(ry),     0,Math.sin(ry)    ],
-              [Math.cos(ry+1.57),0,Math.sin(ry+1.57)],
-              [Math.cos(ry+3.14),0,Math.sin(ry+3.14)],
-              [Math.cos(ry+4.71),0,Math.sin(ry+4.71)],
-            ];
             const lat=Math.asin(clamp(nrm[1],-1,1));
             let wave=Math.sin(lat*13-globT*0.06)*0.55;
-            for(let si=0;si<GSRCS.length;si++){
-              const s=GSRCS[si];
-              const cosA=clamp(nrm[0]*s[0]+nrm[1]*s[1]+nrm[2]*s[2],-1,1);
+            for(let si=0;si<4;si++){
+              const cosA=clamp(nrm[0]*Math.cos(ry+si*1.57)+nrm[2]*Math.sin(ry+si*1.57),-1,1);
               wave+=Math.sin(Math.acos(cosA)*8-globT*(0.08+si*0.015)+si*0.79)*0.11;
             }
-            wave=clamp(wave,-1,1);
-            br=clamp(diffuse*(0.82+0.22*wave),0,1);
-          }else if(hitB.id===3){
-            br=diffuse;
-            const land=sNoise(nrm[0]*3.0,nrm[1]*3.0,nrm[2]*3.0)*0.50
-                      +sNoise(nrm[0]*6.5,nrm[1]*6.5,nrm[2]*6.5)*0.35
-                      +sNoise(nrm[0]*13, nrm[1]*13, nrm[2]*13) *0.15;
-            if(land>0.54){
-              const alt=clamp((land-0.54)/0.28,0,1);
-              cr=Math.floor(lerp(55,110,alt)*br);
-              cg=Math.floor(lerp(130,115,alt)*br);
-              cb=Math.floor(lerp(40, 80,alt)*br);
-            }else{
-              const depth=clamp((0.54-land)/0.40,0,1);
-              cr=Math.floor(lerp(70,15,depth)*br);
-              cg=Math.floor(lerp(140,65,depth)*br);
-              cb=Math.floor(lerp(220,170,depth)*br);
-            }
-          }else{
-            br=diffuse;
+            ripple=0.92+0.10*clamp(wave,-1,1);
           }
-          if(hitB.id!==3){const c=hitB.col;cr=Math.floor(c[0]*br);cg=Math.floor(c[1]*br);cb=Math.floor(c[2]*br);}
-        // Great Red Spot — oval storm at ~23°S, co-rotates with bands
-        if(hitB.id===5){
-          const grsA=globT*0.006+6.7; // phase offset places it in a visible position
-          const grsLat=-0.40;         // sin(23.6°S)
-          const cosLat=Math.sqrt(1-grsLat*grsLat);
-          const gcx=Math.sin(grsA)*cosLat,gcz=Math.cos(grsA)*cosLat;
-          const neq=Math.sqrt(nrm[0]*nrm[0]+nrm[2]*nrm[2]);
-          const dLon=Math.acos(clamp((nrm[0]*gcx+nrm[2]*gcz)/Math.max(0.001,neq*cosLat),-1,1));
-          const dLat=nrm[1]-grsLat;
-          const gd=(dLon/0.22)**2+(dLat/0.10)**2; // ellipse: 2:1 lon:lat ratio
-          if(gd<1.0){
-            const t=clamp(1-gd,0,1)*0.80;
-            cr=Math.floor(lerp(cr,Math.floor(210*br),t));
-            cg=Math.floor(lerp(cg,Math.floor(72*br),t));
-            cb=Math.floor(lerp(cb,Math.floor(38*br),t));
+          aurOut=null;
+          const e=hitB.moon?moonSurface(hitB,nrm):SURFACE[hitB.id](nrm,toSun,[-rx,-ry,-rz]);
+          if(e[4]){br=e[3];cr=Math.floor(e[0]*br);cg=Math.floor(e[1]*br);cb=Math.floor(e[2]*br);if(e[6])under=[e[6][0]*diffuse,e[6][1]*diffuse,e[6][2]*diffuse];}   // lights sit on the dark land's fill
+          else{
+            br=clamp(diffuse*e[3]*ripple,0,1);
+            cr=Math.floor(e[0]*diffuse);cg=Math.floor(e[1]*diffuse);cb=Math.floor(e[2]*diffuse);
+            if(e[6])under=[e[6][0]*diffuse,e[6][1]*diffuse,e[6][2]*diffuse];   // what lies beneath any cloud here
           }
-        }
+          if(aurOut){                                        // aurora glows on top of whatever light the surface has
+            const I=aurOut[3];
+            if(!under)under=[cr,cg,cb];
+            cr=Math.min(255,cr+aurOut[0]*I)|0;cg=Math.min(255,cg+aurOut[1]*I)|0;cb=Math.min(255,cb+aurOut[2]*I)|0;
+            br=Math.max(br,0.25+0.6*I);
+          }
         }
         const ri=Math.floor(br*(RAMP.length-1)),base=RAMP[ri];
         const h=fhash(cx,cy,hitB.id),cs=hitB.cs;
         let ch=(br>0.07&&h<0.38)?cs[Math.floor(h/0.38*cs.length)]:base;
         if(!hitB.sun&&ch===' ')ch='.';
-        grid[idx]={ch,r:cr,g:cg,b:cb};
+        grid[idx]={ch,r:cr,g:cg,b:cb,fill:under};   // clouds keep the fill of the ground or ocean under them
         occ[idx]=1;
+        if(hitB.sun){if(sizeK[0]>0)fillK[idx]=-sizeK[0];}                         // marker: use SUN_FILL, no limb fade (the corona takes over there)
+        else if(sizeK[hitB.id]>0)fillK[idx]=sizeK[hitB.id]*sstep(0.05,0.5,-(nrm[0]*rx+nrm[1]*ry+nrm[2]*rz));
+      }
+    }
+  }
+
+  // --- asteroid pass: projected, depth-tested against the raycast, lit like everything else ---
+  for(let i=0;i<ROCKS.length;i++){
+    const k=ROCKS[i],d=sub(k.pos,camPos),fz=dot(d,cam.fwd);
+    if(fz<0.05)continue;
+    const sx=(dot(d,cam.rgt)/(fz*cam.tanW)*0.5+0.5)*GW*CW,sy=(0.5-dot(d,cam.up)/(fz*cam.tanH)*0.5)*GH*CH;
+    const Rpx=k.r/fz*pxPerUnit;
+    if(sx<-Rpx*2||sx>W+Rpx*2||sy<-Rpx*2||sy>H+Rpx*2)continue;
+    const toSun=norm(mul(k.pos,-1));
+    const lr=dot(toSun,cam.rgt),lu=dot(toSun,cam.up),lf=-dot(toSun,cam.fwd);
+    if(Rpx<CW*0.75){                                       // sub-cell: one glyph
+      const gx=Math.floor(sx/CW),gy=Math.floor(sy/CH);
+      if(gx<0||gx>=GW||gy<0||gy>=GH)continue;
+      const idx=gy*GW+gx;if(fz>zbuf[idx])continue;
+      const b=clamp((0.35+0.5*Math.max(0,lf))*k.tone,0.42,1);
+      grid[idx]={ch:Rpx<2.5?'.':".,'`"[i&3],r:ROCK_COL[0]*b|0,g:ROCK_COL[1]*b|0,b:ROCK_COL[2]*b|0};
+      zbuf[idx]=fz;occ[idx]=1;continue;
+    }
+    const rot=globT*k.spin;
+    const x0=Math.max(0,Math.floor((sx-Rpx*1.2)/CW)),x1=Math.min(GW-1,Math.floor((sx+Rpx*1.2)/CW));
+    const y0=Math.max(0,Math.floor((sy-Rpx*1.2)/CH)),y1=Math.min(GH-1,Math.floor((sy+Rpx*1.2)/CH));
+    for(let gy=y0;gy<=y1;gy++)for(let gx=x0;gx<=x1;gx++){
+      const dx=((gx+0.5)*CW-sx)/Rpx,dy=((gy+0.5)*CH-sy)/Rpx,rr=Math.hypot(dx,dy);
+      const ang=Math.atan2(dy,dx)+rot,edge=rockEdge(i,ang);
+      if(rr>edge)continue;
+      const idx=gy*GW+gx;if(fz>zbuf[idx])continue;
+      // faceted pseudo-normal: a sphere normal nudged per angular facet
+      const q=rr/edge,nz=Math.sqrt(Math.max(0,1-q*q)),fa=Math.floor((ang/(Math.PI*2)%1+1)%1*ROCK_SECT),ring=q>0.55?1:0;
+      const jx=(fhash(i,fa*2+ring,61)-0.5)*0.9,jy=(fhash(i,fa*2+ring,67)-0.5)*0.9;
+      let nx=dx/Math.max(edge,1e-3)+jx,ny=-dy/Math.max(edge,1e-3)+jy;
+      const nl=Math.hypot(nx,ny,nz)||1;nx/=nl;ny/=nl;
+      const br=clamp((0.12+0.88*Math.max(0,nx*lr+ny*lu+(nz/nl)*lf))*k.tone,0,1);
+      const h=fhash(gx,gy,i+900);
+      let ch=(br>0.1&&h<0.4)?ROCK_CS[Math.floor(h/0.4*ROCK_CS.length)]:RAMP[Math.floor(br*(RAMP.length-1))];
+      if(ch===' ')ch='.';else if(ch==='/')ch='|';
+      grid[idx]={ch,r:ROCK_COL[0]*br|0,g:ROCK_COL[1]*br|0,b:ROCK_COL[2]*br|0};
+      zbuf[idx]=fz;occ[idx]=1;fillK[idx]=sstep(FILL_SIZE[0],FILL_SIZE[1],Rpx/CW)*sstep(0.05,0.5,nz);
+    }
+  }
+
+  // --- corona: no crisp limb. A dithered glow with slow streamers, brightest at the edge ---
+  {
+    const R=BODIES[0].r,sp=bodyPos[0],ox=camPos[0]-sp[0],oy=camPos[1]-sp[1],oz=camPos[2]-sp[2],od2=ox*ox+oy*oy+oz*oz;
+    const reach=0.2,tick=Math.floor(globT*7);
+    if(od2>R*R&&vis.includes(0)&&Math.sqrt(od2)<420)for(let cy=0;cy<GH;cy++)for(let cx=0;cx<GW;cx++){
+      const idx=cy*GW+cx;if(occ[idx])continue;
+      const k=idx*3,rx=rays[k],ry=rays[k+1],rz=rays[k+2],b=-(ox*rx+oy*ry+oz*rz);if(b<=0)continue;
+      const d=Math.sqrt(Math.max(0,od2-b*b));if(d<R||d>R*(1+reach*1.6))continue;
+      const qx=(ox+rx*b)/d,qy=(oy+ry*b)/d,qz=(oz+rz*b)/d;                       // direction of this bit of corona from the sun's centre
+      const st=sNoise(qx*2.2+globT*0.015,qy*2.2,qz*2.2)*0.6+sNoise(qx*6,qy*6+globT*0.04,qz*6)*0.4;   // slow streamers
+      const x=(d/R-1)/(reach*(0.3+1.4*st));if(x>=1)continue;
+      const fl=sNoise(qx*15+x*3-globT*0.35,qy*15,qz*15+globT*0.2);                                  // licking flames, moving outward
+      const I=Math.max(Math.pow(1-x,1.8)*(0.45+0.75*fl),0.9-x*3);              // always solid right at the limb
+      const h=fhash(cx,cy,tick);
+      if(h>I*1.6+0.03)continue;                                                 // dither thins it out with distance
+      const hot=clamp(I*1.15,0,1),set=I>0.62?'#%&@*':I>0.34?'*~^+"=':".:'`~,";
+      grid[idx]={ch:set[hash32(cx,cy,tick>>1)%set.length],r:255*Math.min(1,0.5+I),g:lerp(80,235,hot)*Math.min(1,0.35+I),b:lerp(20,140,hot*hot)*I,glow:clamp(I,0,1)};
+      occ[idx]=5;
+    }
+  }
+
+  // --- particle pass: coronal loops, flares, and the comet's coma and tails ---
+  // depth-tested points; they never write depth or take fill, so they layer like glowing gas
+  const plot=(p,ch,r,g,b)=>{
+    const dx=p[0]-camPos[0],dy=p[1]-camPos[1],dz=p[2]-camPos[2];
+    const fz=dx*cam.fwd[0]+dy*cam.fwd[1]+dz*cam.fwd[2];if(fz<0.05)return;
+    const gx=Math.floor(((dx*cam.rgt[0]+dy*cam.rgt[1]+dz*cam.rgt[2])/(fz*cam.tanW)*0.5+0.5)*GW);
+    const gy=Math.floor((0.5-(dx*cam.up[0]+dy*cam.up[1]+dz*cam.up[2])/(fz*cam.tanH)*0.5)*GH);
+    if(gx<0||gx>=GW||gy<0||gy>=GH)return;
+    const idx=gy*GW+gx;if(fz>zbuf[idx])return;
+    const o=grid[idx];
+    if(o&&o.part&&o.r+o.g+o.b>r+g+b)return;                // keep the brighter of two overlapping particles
+    // over a body or the corona the particle only swaps the glyph: the cell keeps its fill, so gas never punches a dark hole
+    const solid=!!o&&(occ[idx]===1||occ[idx]===5);
+    grid[idx]={ch,r:r|0,g:g|0,b:b|0,part:true,fill:solid?(o.fill||[o.r,o.g,o.b]):null,glow:solid?o.glow:0};
+    if(!solid)occ[idx]=4;
+  };
+  {
+    const R=BODIES[0].r,sunD=len(camPos),step=Math.max(0.004,sunD/pxPerUnit*CW*0.7/R);   // about one sample per cell
+    const tik=Math.floor(globT*9);
+    if(sunD<260)for(let k=0;k<REGIONS.length;k++){
+      const g=REGIONS[k];
+      if(g.loop>0.02){
+        const side=norm(cross(g.n,sub(g.b,g.a)));
+        for(let strand=0;strand<3;strand++){
+          const lean=(strand-1)*0.22,hh=g.h*g.rise*(1-0.22*strand)*g.loop;
+          for(let t=0;t<=1;t+=step/0.35){
+            const base=norm(lv(g.a,g.b,t)),lift=Math.sin(Math.PI*t)*hh;
+            const q=mul(add(base,mul(side,lean*lift)),R*(1.003+lift));
+            const hot=0.55+0.45*Math.sin(t*9-globT*2.2+strand);             // plasma draining along the loop
+            plot(q,'(){}~'[hash32(k*31+strand,Math.floor(t*40),tik>>2)%5],255*g.loop,(110+110*hot)*g.loop,(40+60*hot)*g.loop);
+          }
+        }
+      }
+      if(g.flare>=0){                                        // a large eruption reaches about half a solar radius
+        const f=g.flare;
+        for(let j=0;j<160;j++){
+          const jx=fhash(j,g.cyc,k+231)-0.5,jy=fhash(j,g.cyc,k+233)-0.5,jz=fhash(j,g.cyc,k+239)-0.5;
+          const dir=norm(add(g.n,[jx*0.16,jy*0.16,jz*0.16])),v=0.5+fhash(j,g.cyc,k+241);   // a tight jet, not a spray
+          const fj=f-fhash(j,g.cyc,k+243)*0.45;if(fj<0)continue;        // staggered launches: a continuous jet from the surface, not one puff
+          const d=R*(1.01+fj*v*1.9),fade=Math.pow(1-f,1.2)*(0.5+0.5*v)*(1-0.5*fj);
+          plot(mul(dir,d),fj<0.2?'*':'*+:.'[hash32(j,tik,k)%4],255*fade,lerp(250,130,fj)*fade,lerp(210,40,fj)*fade);
+        }
+      }
+    }
+    // CMEs, in the three parts every coronagraph image shows: a bright leading shell (a bubble of swept-up
+    // plasma that looks like a loop because you see more of it edge-on), a dark cavity inside it, and a
+    // bright knotted core (the erupted prominence). It grows self-similarly, keeping its angular width,
+    // and stays tied to the sun by two legs. All of it is points on simple shapes; nothing is simulated.
+    for(const c of CMES){
+      const age=(globT-c.t0)/CME_LIFE;if(age>=1)continue;
+      const F=c.front,dil=1/(1+F/(R*5)),fadeAll=Math.pow(1-age,0.5)*(0.62+0.38*dil);   // thins as it expands
+      const e1=norm(cross(c.dir,[0,1,0])),e2=cross(c.dir,e1);
+      const cen=F*0.77,rb=F*0.23;                                                   // bubble: nose at the front, radius a fixed share of it
+      for(let j=0;j<300;j++){                                                       // leading shell
+        const u=fhash(j,c.seed,261)*2-1,a=fhash(j,c.seed,263)*Math.PI*2,sq=Math.sqrt(1-u*u);
+        const thick=1-0.10*fhash(j,c.seed,269);
+        const lx=u*rb*0.82*thick,l1=Math.cos(a)*sq*rb*thick,l2=Math.sin(a)*sq*rb*thick;   // flattened a little along its travel
+        if(cen+lx<R*1.02)continue;
+        const q=add(mul(c.dir,cen+lx),add(mul(e1,l1),mul(e2,l2)));
+        const k=fadeAll*(0.45+0.55*(u*0.5+0.5))*(0.7+0.3*fhash(j,tik,271));         // nose brighter than the back
+        plot(q,u>0.3?'*':'.:+\''[hash32(j,c.seed,tik>>1)%4],255*k,lerp(245,190,age)*k,lerp(230,120,age)*k);
+      }
+      for(let j=0;j<70;j++){                                                        // core: twisted filament in the back half of the cavity
+        const t=fhash(j,c.seed,277),tw=t*9+globT*0.6,rr=rb*0.2*(0.4+fhash(j,c.seed,281));
+        const q=add(mul(c.dir,F*(0.66+0.16*t)),add(mul(e1,Math.cos(tw)*rr),mul(e2,Math.sin(tw)*rr)));
+        if(len(q)<R*1.02)continue;
+        const k=fadeAll*(0.8+0.2*fhash(j,tik,283));
+        plot(q,'#*%+'[hash32(j,c.seed,tik>>1)%4],255*k,lerp(170,90,age)*k,lerp(70,30,age)*k);
+      }
+      for(let j=0;j<60;j++){                                                        // legs back to the surface
+        const t=fhash(j,c.seed,287),side=j&1?1:-1,w=rb*0.92*t*t;
+        const q=add(mul(c.dir,lerp(R*1.02,cen,t)),mul(e1,side*w));
+        const k=fadeAll*(0.35+0.4*t);
+        plot(q,":.'"[j%3],255*k,215*k,160*k);
+      }
+    }
+    // Halley
+    const H=HALLEY,hp=H.pos,away=norm(hp);
+    plot(sub(hp,mul(norm(sub(hp,camPos)),0.2)),'*',200,225,255);                        // always findable
+    if(H.act>0.06){
+      const L=95*H.act,comaR=0.5+1.6*H.act,nI=110,nD=200,flow=globT*0.22;
+      for(let j=0;j<40;j++){                                                           // coma
+        const o=[fhash(j,1,251)-0.5,fhash(j,2,251)-0.5,fhash(j,3,251)-0.5],rr=Math.pow(fhash(j,4,251),0.7)*comaR;
+        const k=1-rr/comaR*0.7;plot(add(hp,mul(norm(o),rr)),'o*+.'[j&3],190*k,235*k,255*k);
+      }
+      for(let j=0;j<nI;j++){                                                           // ion tail: narrow, straight, blue
+        const t=((j/nI)+flow*1.6)%1,w=0.03*L*t;
+        const o=[(fhash(j,5,251)-0.5)*w,(fhash(j,6,251)-0.5)*w,(fhash(j,7,251)-0.5)*w];
+        const k=Math.pow(1-t,1.0)*(0.65+0.35*H.act);
+        plot(add(add(hp,mul(away,L*t)),o),t<0.5?':':'.',90*k,170*k,255*k);
+      }
+      const lag=mul(H.vel,-1);
+      for(let j=0;j<nD;j++){                                                           // dust tail: broad, curved back along the orbit
+        const t=((j/nD)+flow)%1,w=0.17*L*t*0.7+0.3;
+        const o=[(fhash(j,8,251)-0.5)*w,(fhash(j,9,251)-0.5)*w*0.5,(fhash(j,10,251)-0.5)*w];
+        const q=add(add(add(hp,mul(away,L*0.72*t)),mul(lag,L*0.42*t*t)),o);
+        const k=Math.pow(1-t,1.2)*(0.6+0.4*H.act);
+        plot(q,".,`'*"[hash32(j,3,7)%5],255*k,238*k,196*k);
       }
     }
   }
 
   // --- atmosphere shell pass ---
   const atmCS='oO0()@#+*';
-  for(let cy=0;cy<GH;cy++){
+  const atmLive=[];
+  for(let bi=1;bi<BODIES.length;bi++){
+    const atm=ATM[bi];if(!atm)continue;
+    if(len2(sub(camPos,bodyPos[bi]))<atm.r*atm.r)continue;
+    const proj=projectPt(bodyPos[bi],cam);
+    if(proj||len(sub(camPos,bodyPos[bi]))<atm.r*4)atmLive.push(bi);   // skip shells behind the camera
+  }
+  if(atmLive.length)for(let cy=0;cy<GH;cy++){
     for(let cx=0;cx<GW;cx++){
       const idx=cy*GW+cx;
       if(occ[idx])continue;
-      const rd=getRay(cx,cy,cam),ro=camPos;
-      for(let bi=1;bi<BODIES.length;bi++){
-        const atm=ATM[bi];if(!atm)continue;
+      const k=idx*3,rd=[rays[k],rays[k+1],rays[k+2]],ro=camPos;
+      for(const bi of atmLive){
+        const atm=ATM[bi];
         const bp=bodyPos[bi];
-        if(len2(sub(camPos,bp))<atm.r*atm.r)continue;
         const tA=raySphere(ro,rd,bp,atm.r);
         if(tA<0)continue;
         const hp=add(ro,mul(rd,tA));
         const nrm=norm(sub(hp,bp));
         const toSun=norm(sub(bodyPos[0],hp));
-        const br=clamp(0.25+0.75*dot(nrm,toSun),0,1);
-        const c=atm.col,h=fhash(cx,cy,bi*311+29);
+        const br=clamp(0.25+0.75*dot(nrm,toSun)+0.5*STORM[bi],0,1);
+        const st=STORM[bi]*0.45,c=[lerp(atm.col[0],255,st),lerp(atm.col[1],255,st),lerp(atm.col[2],255,st)],h=fhash(cx,cy,bi*311+29);
         grid[idx]={ch:atmCS[Math.floor(h*atmCS.length)],r:Math.floor(c[0]*br),g:Math.floor(c[1]*br),b:Math.floor(c[2]*br)};
         occ[idx]=3;
         break;
       }
     }
+  }
+
+  // --- beacons: a body smaller than one cell still gets one glyph, so nothing vanishes from the overview ---
+  for(const body of BODIES){
+    const proj=projectPt(bodyPos[body.id],cam);if(!proj)continue;
+    const[gx,gy]=proj;
+    if(gx<0||gx>=GW||gy<0||gy>=GH)continue;
+    const idx=gy*GW+gx;
+    const cellsR=body.r/Math.max(0.1,len(sub(bodyPos[body.id],camPos)))*pxPerUnit/CW;
+    if(cellsR>0.9&&(occ[idx]===1||occ[idx]===2))continue;   // big enough to have been raycast properly
+    const bd=len(sub(bodyPos[body.id],camPos));
+    if(zbuf[idx]<bd-body.r*2-0.01)continue;                 // something nearer already owns this cell
+    zbuf[idx]=bd;
+    const c=body.col;
+    grid[idx]={ch:body.sun?'@':'o',r:c[0],g:c[1],b:c[2]};occ[idx]=1;
   }
 
   // --- orbit ring post-pass ---
@@ -537,10 +1488,10 @@ function frame(now){
     }
   }
 
-  // --- text overlay ---
-  const nearStop=Math.round(scrollPos/SS);
-  const prox=clamp(1-Math.abs(scrollPos/SS-nearStop)*2.5,0,1);
-  if(nearStop>=1&&nearStop<=8&&prox>0.02){
+  // --- text overlay (planet descriptions) — disabled; remove the comment markers to bring it back ---
+  /*
+  if(infoI>=1&&prox>0.02){
+    const nearStop=infoI;
     const body=STOPS[nearStop],desc=body.desc;
     const maxLen=desc.reduce((m,l)=>Math.max(m,l.length),0);
     const tw=maxLen+4,th=desc.length+2;
@@ -563,19 +1514,33 @@ function frame(now){
             ch=n<Math.pow(prox,0.4)?tc:GIB[hash32(bx,by,tik)%GIB.length];
           }
         }
-        if(ch!==' '){
-          const c=body.col,a=prox;
-          grid[by*GW+bx]={ch,r:Math.floor(c[0]*a),g:Math.floor(c[1]*a*0.85),b:Math.floor(c[2]*a*0.85)};
-        }
+        const c=body.col,a=prox;
+        // the box is opaque so the planet never bleeds through the copy
+        grid[by*GW+bx]=ch===' '?(a>0.5?{ch:' ',r:0,g:0,b:0}:grid[by*GW+bx]):{ch,r:Math.floor(c[0]*a),g:Math.floor(c[1]*a*0.85),b:Math.floor(c[2]*a*0.85)};
       }
     }
   }
 
+  */
+
   // --- render grid ---
+  if(CELL_FILL>0||SUN_FILL>0){
+    for(let cy=0;cy<GH;cy++)for(let cx=0;cx<GW;cx++){
+      const idx=cy*GW+cx;
+      if(occ[idx]===5){const c=grid[idx],g=c.glow*c.glow*CELL_FILL*1.1;ctx.fillStyle=`rgb(${255*g|0},${120*g|0},${30*g|0})`;ctx.fillRect(cx*CW,cy*CH,CW,CH);continue;}   // corona: a soft wash, strongest at the limb
+      const f=fillK[idx]<0?-fillK[idx]*SUN_FILL:fillK[idx]*CELL_FILL;   // negative = the sun, faded in by on-screen size like everything elseif(f<0.004||occ[idx]!==1)continue;   // occ 1 = solid body; rings and atmospheres never fill
+      const cell=grid[idx];if(!cell)continue;
+      const u=cell.fill;
+      ctx.fillStyle=u?`rgb(${u[0]*f|0},${u[1]*f|0},${u[2]*f|0})`:`rgb(${cell.r*f|0},${cell.g*f|0},${cell.b*f|0})`;ctx.fillRect(cx*CW,cy*CH,CW,CH);
+    }
+  }
   for(let cy=0;cy<GH;cy++){
     for(let cx=0;cx<GW;cx++){
-      const cell=grid[cy*GW+cx];
-      if(cell&&cell.ch!==' '){ctx.fillStyle=`rgb(${cell.r},${cell.g},${cell.b})`;ctx.fillText(cell.ch,cx*CW,cy*CH);}
+      const idx=cy*GW+cx,cell=grid[idx];
+      if(cell&&cell.ch!==' '){
+        const k=occ[idx]===1?1+(GLYPH_GAIN-1)*Math.max(0,fillK[idx]):1;
+        ctx.fillStyle=`rgb(${Math.min(255,cell.r*k)|0},${Math.min(255,cell.g*k)|0},${Math.min(255,cell.b*k)|0})`;ctx.fillText(cell.ch,cx*CW,cy*CH);
+      }
     }
   }
 
@@ -590,41 +1555,71 @@ function frame(now){
       const a=clamp(atm.str*0.48*(0.25+0.75*depth),0,0.75);
       const c=atm.col;
       ctx.fillStyle=`rgba(${c[0]},${c[1]},${c[2]},${a})`;
-      ctx.fillRect(0,0,cvs.width,cvs.height);
+      ctx.fillRect(0,0,W,H);
       break;
     }
   }
 
   // --- HUD ---
+  const locked=document.pointerLockElement===cvs;
+  const hot=locked?null:hudHit(mouseX,mouseY);
+  // keep the map readable over whatever is behind it
+  ctx.fillStyle='rgba(0,0,0,0.55)';
+  ctx.fillRect(0,0,HUD_W,FLY_Y+CH+6);
+  drawHud(currentI,hot);
+  cvs.style.cursor=hot!=null?'pointer':mode==='fly'?'crosshair':inPlanetStop?(dragActive?'grabbing':'grab'):'default';
+
   ctx.font=`${CH}px 'Courier New',monospace`;
-  let hudCursor=false;
-  for(let i=0;i<HUD_NAMES.length;i++){
-    const hy=CH*(i+1);
-    const hovered=mouseX>=0&&mouseX<HUD_W&&mouseY>=hy&&mouseY<hy+CH;
-    if(hovered)hudCursor=true;
-    const d=Math.abs(scrollPos/SS-i),a=clamp(1-d*1.4,0.12,1);
-    const br=hovered?1:a;
-    ctx.fillStyle=hovered?`rgb(255,255,255)`:`rgb(${Math.floor(80*br)},${Math.floor(100*br)},${Math.floor(160*br)})`;
-    ctx.fillText((i===nearStop&&prox>0.7?'>':' ')+' '+HUD_NAMES[i],CW,hy);
-  }
-  cvs.style.cursor=hudCursor?'pointer':inPlanetStop?(dragActive?'grabbing':'grab'):'default';
-  if(globT<4){
-    const a=clamp(1-(globT-2),0,1);
-    if(a>0){ctx.fillStyle=`rgba(80,90,130,${a*0.7})`;ctx.fillText('scroll to navigate',CW,GH*CH-CH*2);}
+  if(mode==='fly'){
+    hintT+=dt;
+    const a=hintT<8?0.8:0.4;
+    ctx.fillStyle=`rgba(80,90,130,${a})`;
+    ctx.fillText(locked?'wasd move   mouse look   e/q up/down   shift boost   esc free cursor   f land'
+                       :'wasd move   click to capture mouse (or drag to look)   e/q up/down   shift boost   f land',CW,H-CH*2);
+  }else{
+    hintT=0;
+    if(globT<6){
+      const a=clamp(1-(globT-4),0,1);
+      if(a>0){ctx.fillStyle=`rgba(80,90,130,${a*0.7})`;ctx.fillText('scroll to navigate   f to fly',CW,H-CH*2);}
+    }
   }
 
   // --- title card (overview position only) ---
-  const titleA=clamp(1-scrollPos/(SS*0.7),0,1);
-  if(titleA>0){
-    const pad=20;
+  const wantTitle=mode==='tour'&&navToI===0&&navT>0.55?1:0;
+  titleA=lerp(titleA,wantTitle,clamp(1-Math.exp(-(wantTitle?3:7)*dt),0,1));
+  if(titleA>0.01){
+    const small=W<700,R=W-(small?16:30),top=small?20:30,A=titleA;
+    // headline
     ctx.textAlign='right';
-    ctx.font=`200 52px 'Fira Sans',sans-serif`;
-    ctx.fillStyle=`rgba(255,255,255,${titleA})`;
-    ctx.fillText('Micah Sellers',cvs.width-pad,pad+52);
-    ctx.font=`300 22px 'Fira Sans',sans-serif`;
-    ctx.fillStyle=`rgba(255,255,255,${titleA})`;
-    ctx.fillText('This is a placeholder until I finish my portfolio',cvs.width-pad,pad+52+62);
-    ctx.fillText('scroll down to explore our Solar System',cvs.width-pad,pad+52+62+40);
+    ctx.font=`200 ${small?26:42}px 'Fira Sans',sans-serif`;
+    ctx.fillStyle=`rgba(255,255,255,${A})`;
+    ctx.fillText('explore our Solar System',R,top);
+    // hairline that fades out to the left
+    const ry=top+(small?40:62),rw=small?220:340,g=ctx.createLinearGradient(R-rw,0,R,0);
+    g.addColorStop(0,'rgba(255,255,255,0)');g.addColorStop(1,`rgba(255,255,255,${0.55*A})`);
+    ctx.fillStyle=g;ctx.fillRect(R-rw,ry,rw,1);
+    // controls: keycap, then what it does
+    const rows=[['SCROLL','travel from planet to planet'],['DRAG','orbit the one you are at'],['CLICK','jump to any planet'],['F','fly anywhere']];
+    const fs=small?14:17,rh=small?26:32,kh=small?18:21;
+    ctx.font=`300 ${fs}px 'Fira Sans',sans-serif`;
+    const aw=Math.max(...rows.map(r=>ctx.measureText(r[1]).width));
+    rows.forEach((r,k)=>{
+      const y=ry+(small?16:22)+k*rh;
+      ctx.font=`300 ${fs}px 'Fira Sans',sans-serif`;ctx.textAlign='left';ctx.textBaseline='middle';
+      ctx.fillStyle=`rgba(255,255,255,${0.62*A})`;
+      ctx.fillText(r[1],R-aw,y+kh/2);
+      // keycap: tracked capitals in a hairline box
+      ctx.font=`300 ${small?10:11}px 'Fira Sans',sans-serif`;
+      const sp=1.6,chars=[...r[0]],cw=chars.reduce((w,c)=>w+ctx.measureText(c).width+sp,-sp),kw=Math.max(kh,cw+16),kx=R-aw-14-kw;
+      ctx.strokeStyle=`rgba(255,255,255,${0.45*A})`;ctx.lineWidth=1;
+      ctx.beginPath();
+      if(ctx.roundRect)ctx.roundRect(kx+0.5,y+0.5,kw-1,kh-1,4);else ctx.rect(kx+0.5,y+0.5,kw-1,kh-1);
+      ctx.stroke();
+      ctx.fillStyle=`rgba(255,255,255,${0.9*A})`;
+      let cx=kx+(kw-cw)/2;
+      for(const c of chars){ctx.fillText(c,cx,y+kh/2+0.5);cx+=ctx.measureText(c).width+sp;}
+    });
+    ctx.textBaseline='top';
     ctx.textAlign='left';
   }
 
