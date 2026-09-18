@@ -1593,13 +1593,13 @@ function frame(now){
     ctx.textAlign='right';
     ctx.font=`200 ${small?26:42}px 'Fira Sans',sans-serif`;
     ctx.fillStyle=`rgba(255,255,255,${A})`;
-    ctx.fillText('explore our Solar System',R,top);
+    ctx.fillText('explore the solar system',R,top);
     // hairline that fades out to the left
     const ry=top+(small?40:62),rw=small?220:340,g=ctx.createLinearGradient(R-rw,0,R,0);
     g.addColorStop(0,'rgba(255,255,255,0)');g.addColorStop(1,`rgba(255,255,255,${0.55*A})`);
     ctx.fillStyle=g;ctx.fillRect(R-rw,ry,rw,1);
     // controls: keycap, then what it does
-    const rows=[['SCROLL','travel from planet to planet'],['DRAG','orbit the one you are at'],['CLICK','jump to any planet'],['F','fly anywhere']];
+    const rows=[['SCROLL','travel sequentially through the planets'],['DRAG','orbit current planet'],['CLICK','hop to other planets'],['F','free fly']];
     const fs=small?14:17,rh=small?26:32,kh=small?18:21;
     ctx.font=`300 ${fs}px 'Fira Sans',sans-serif`;
     const aw=Math.max(...rows.map(r=>ctx.measureText(r[1]).width));
