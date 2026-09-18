@@ -203,12 +203,12 @@ const Camera={
   tgt:[...OVERVIEW.tgt],
   fov:OVERVIEW.fov,
   rates:{
-    hopBase:2.6,     // s, minimum-ish flight time
-    hopPerDecade:1.3,// s added per 10x of distance
+    hopBase:4.0,     // s, minimum-ish flight time
+    hopPerDecade:2.0,// s added per 10x of distance
     lookLead:0.6,    // fraction of the flight by which the view has settled on the destination
     lift:0.08,       // arc height as a fraction of hop length
     liftMax:30,
-    flyAccel:5.0,    // 1/s, how fast fly velocity follows the keys
+    flyAccel:3.0,    // 1/s, how fast fly velocity follows the keys
     flyLook:0.0022,  // rad per pixel of mouse travel
   },
   build(){return buildCam(this.pos,this.tgt,this.fov);}
@@ -315,7 +315,7 @@ function updateFly(dt){
   // speed scales with clearance: slow and precise near a surface, fast in open space
   let clear=1e9;
   for(let i=0;i<RC.length;i++)clear=Math.min(clear,len(sub(bodyPos[i],Camera.pos))-RC[i].r);
-  const speed=clamp(clear*2.5,1.5,300)*((keys.ShiftLeft||keys.ShiftRight)?4:1);
+  const speed=clamp(clear*2.5,1.5,90)*((keys.ShiftLeft||keys.ShiftRight)?4:1);
   const a=clamp(1-Math.exp(-Camera.rates.flyAccel*dt),0,1);
   fly.vel=lv(fly.vel,mul(wish,speed),a);
   let p=add(Camera.pos,mul(fly.vel,dt));
