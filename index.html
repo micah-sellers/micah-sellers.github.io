@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Micah Sellers</title>
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icons/favicon-512.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <meta name="description" content="Micah Sellers, mechatronics and robotics engineering student at the University of Alberta.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,13 +14,18 @@
 <script>
 // dark from 8 pm to 7 am in the visitor's local time; runs before first paint so there's no flash,
 // and flips on its own if the page is left open across 7:00 or 20:00
-(function theme() {
+let themeTimer = 0;
+function theme() {
   const d = new Date(), h = d.getHours();
   document.documentElement.dataset.theme = h >= 20 || h < 7 ? "dark" : "light";
   const next = new Date(d); next.setMinutes(0, 0, 0);
   next.setHours(h < 7 ? 7 : h < 20 ? 20 : 31);                 // 31 = 7 am tomorrow
-  setTimeout(theme, next - d + 500);
-})();
+  clearTimeout(themeTimer); themeTimer = setTimeout(theme, next - d + 500);
+}
+theme();
+// coming back with the browser's Back button restores a frozen copy of the page without
+// re-running scripts; re-check the clock so it's never showing a stale theme
+addEventListener("pageshow", (e) => { if (e.persisted) theme(); });
 </script>
 <style>
 :root{--paper:#E9EBE8;--ink:#202326;--dim:#7E8488;--faint:#BCC1BF;--pad:clamp(20px,4vw,48px)}
@@ -51,7 +59,7 @@ header p{color:var(--dim)}
 /* fixed-size slot: whatever plays in it can't move the layout. The frame is pinned at its
    top-left and any larger bake spills down and right; the description sits at a fixed spot below. */
 .preview{grid-column:2;align-self:center;display:grid;grid-template-rows:312px 6.4em;row-gap:16px}
-.preview pre{width:360px;height:312px;overflow:visible;font:6px/6.5px 'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;white-space:pre;color:var(--ink);user-select:none}
+.preview pre{width:60em;height:52em;overflow:visible;font:6px/1.0833 'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;white-space:pre;color:var(--ink);user-select:none}
 .preview p{max-width:40ch;color:var(--dim)}
 
 footer{grid-column:1;display:flex;flex-wrap:wrap;gap:0 3ch}
@@ -69,10 +77,20 @@ footer a:hover{color:var(--ink)}
 .orrery canvas{position:absolute;right:0;bottom:0;width:170px;height:170px;display:block}  /* drawn at 212, shown at 80% */
 @media (hover:none){.orrery{width:90px;height:90px}}
 
+/* phones: headline, then the frame, then the project list, then its description */
 @media (max-width:720px){
-  main{grid-template-columns:1fr}
-  .preview{display:none}
-  footer{padding-right:90px}
+  main{height:100vh;height:100dvh;margin-bottom:0;grid-template-columns:1fr;
+    grid-template-rows:auto auto auto minmax(0,1fr) auto;row-gap:clamp(12px,3dvh,24px)}
+  .preview{display:contents}
+  .preview pre{grid-row:2;justify-self:center;
+    font-size:min(6px,calc((100vw - 2 * var(--pad)) / 60),calc((100dvh - 400px) / 52))}   /* fit width and height */
+  .work{grid-row:3;align-self:start}
+  .preview p{grid-row:4;overflow:hidden}
+  footer{grid-row:5;padding-right:90px}
+  /* no hover on touch: keep the tapped project highlighted */
+  .work a,.work span{color:var(--faint)}
+  .work a.on{color:var(--ink)}
+  .work a.on span{color:var(--dim)}
 }
 @media (prefers-reduced-motion:reduce){.orrery{animation:none;transition:none}}
 </style>
@@ -163,7 +181,7 @@ const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
     links.forEach((l) => l.classList.toggle("on", l === a));
     cur = a; swapT = REDUCED ? 1 : 0; desc.textContent = a.dataset.desc; kick();
   }
-  links.forEach((a) => { a.addEventListener("pointerenter", () => select(a)); a.addEventListener("focus", () => select(a)); });
+  links.forEach((a) => { a.addEventListener("pointerenter", () => select(a)); a.addEventListener("focus", () => select(a)); a.addEventListener("click", () => select(a)); });
   list.addEventListener("pointerenter", () => list.classList.add("live"));
   list.addEventListener("pointerleave", () => { if (!list.contains(document.activeElement)) list.classList.remove("live"); });
   list.addEventListener("focusin", () => list.classList.add("live"));
