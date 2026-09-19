@@ -8,8 +8,21 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+// dark from 8 pm to 7 am in the visitor's local time; runs before first paint so there's no flash,
+// and flips on its own if the page is left open across 7:00 or 20:00
+(function theme() {
+  const d = new Date(), h = d.getHours();
+  document.documentElement.dataset.theme = h >= 20 || h < 7 ? "dark" : "light";
+  const next = new Date(d); next.setMinutes(0, 0, 0);
+  next.setHours(h < 7 ? 7 : h < 20 ? 20 : 31);                 // 31 = 7 am tomorrow
+  setTimeout(theme, next - d + 500);
+})();
+</script>
 <style>
 :root{--paper:#E9EBE8;--ink:#202326;--dim:#7E8488;--faint:#BCC1BF;--pad:clamp(20px,4vw,48px)}
+:root{color-scheme:light}
+:root[data-theme="dark"]{color-scheme:dark;--paper:#17191B;--ink:#E2E5E2;--dim:#8B9195;--faint:#474C4F}
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%;overflow:hidden;background:var(--paper);color:var(--ink)}
 body{font:14px/1.6 'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;-webkit-font-smoothing:antialiased}
@@ -47,7 +60,7 @@ footer a:hover{color:var(--ink)}
 
 /* corner door to the ASCII solar system */
 .orrery{position:fixed;right:0;bottom:0;z-index:30;display:block;width:125px;height:125px;overflow:hidden;background:#000;
-  border:3px solid var(--ink);border-right:0;border-bottom:0;border-radius:100% 0 0 0;
+  border-radius:100% 0 0 0;
   transition:width .28s cubic-bezier(.2,.9,.3,1),height .28s cubic-bezier(.2,.9,.3,1);
   animation:orreryIn .7s .3s backwards}
 @keyframes orreryIn{from{opacity:0;transform:translate(30px,30px)}}
