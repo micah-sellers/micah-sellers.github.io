@@ -406,7 +406,7 @@ const LG_R=[7,2.4,3.4,3.7,2.9,6.4,5.2,4.4,4.3];       // sun, mercury .. neptune
 const lgY=si=>LG_Y0+si*LG_STEP+(si>0?6:0)+(si>1?4:0); // si: 0 overview, 1 sun, 2.. planets
 const LG_BOTTOM=lgY(LAST)+LG_STEP*0.5;
 const FLY_Y=LG_BOTTOM+10,HUD_W=130;
-const BACK_LABEL='\u2190 Back to portfolio',BACK_HREF='index.html';
+const BACK_LABEL='\u2190 Back to index',BACK_HREF='index.html';
 const BACK_W=232,BACK_H=40,BACK_PAD=18;
 
 // camera's place along the legend, from its distance to the sun
@@ -464,14 +464,14 @@ function drawHud(currentI,hot){
   ctx.fillText(mode==='fly'?'[f] land':'[f] fly',LG_X-7,FLY_Y);
   ctx.font=`${CH}px 'Courier New',monospace`;
   // back to the portfolio: a real button, always on
-  //const bx=W-BACK_PAD-BACK_W,by=H-BACK_PAD-BACK_H,on=hot==='back';
-  //ctx.fillStyle=on?'rgb(255,255,255)':'rgba(0,0,0,0.7)';ctx.fillRect(bx,by,BACK_W,BACK_H);
-  //ctx.strokeStyle='rgb(255,255,255)';ctx.lineWidth=1;ctx.strokeRect(bx+0.5,by+0.5,BACK_W-1,BACK_H-1);
-  //ctx.font=`300 20px 'Fira Sans',sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
-  //ctx.fillStyle=on?'rgb(0,0,0)':'rgb(255,255,255)';
-  //ctx.fillText(BACK_LABEL,bx+BACK_W/2,by+BACK_H/2+1);
-  //ctx.textAlign='left';ctx.textBaseline='top';
-  //ctx.font=`${CH}px 'Courier New',monospace`;
+  const bx=W-BACK_PAD-BACK_W,by=H-BACK_PAD-BACK_H,on=hot==='back';
+  ctx.fillStyle=on?'rgb(255,255,255)':'rgba(0,0,0,0.7)';ctx.fillRect(bx,by,BACK_W,BACK_H);
+  ctx.strokeStyle='rgb(255,255,255)';ctx.lineWidth=1;ctx.strokeRect(bx+0.5,by+0.5,BACK_W-1,BACK_H-1);
+  ctx.font=`300 20px 'Fira Sans',sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillStyle=on?'rgb(0,0,0)':'rgb(255,255,255)';
+  ctx.fillText(BACK_LABEL,bx+BACK_W/2,by+BACK_H/2+1);
+  ctx.textAlign='left';ctx.textBaseline='top';
+  ctx.font=`${CH}px 'Courier New',monospace`;
 }
 
 // click: HUD first, then bodies in the main view
