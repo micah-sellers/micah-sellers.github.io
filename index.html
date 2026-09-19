@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Micah Sellers</title>
+<meta name="description" content="Micah Sellers, mechatronics and robotics engineering student at the University of Alberta.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#E9EBE8;--ink:#202326;--dim:#7E8488;--faint:#BCC1BF;--pad:clamp(20px,4vw,48px)}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;background:var(--paper);color:var(--ink)}
+body{font:14px/1.6 'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+a:focus-visible{outline:1px solid var(--ink);outline-offset:3px}
+
+body{display:grid;place-items:center}
+/* a fixed-size stage in the middle of the screen; shrinks on small viewports, never grows past this */
+main{width:min(100%,880px);height:min(100vh,580px);height:min(100dvh,580px);display:grid;
+  grid-template-columns:minmax(0,40ch) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto;
+  column-gap:clamp(32px,6vw,72px);padding:var(--pad);
+  margin-bottom:clamp(0px,calc(100dvh - 580px),8vh)}
+header{grid-column:1/-1}
+h1{font:inherit;font-weight:500}
+header p{color:var(--dim)}
+
+/* project index */
+.work{grid-column:1;align-self:center;list-style:none}
+.work a{display:flex;justify-content:space-between;gap:2ch;padding:3px 0;transition:color .15s}
+.work span{color:var(--dim);transition:color .15s}
+.work.live a,.work.live span{color:var(--faint)}
+.work.live a.on{color:var(--ink)}
+.work.live a.on span{color:var(--dim)}
+
+/* preview slot */
+/* fixed-size slot: whatever plays in it can't move the layout. The frame is pinned at its
+   top-left and any larger bake spills down and right; the description sits at a fixed spot below. */
+.preview{grid-column:2;align-self:center;display:grid;grid-template-rows:312px 6.4em;row-gap:16px}
+.preview pre{width:360px;height:312px;overflow:visible;font:6px/6.5px 'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;white-space:pre;color:var(--ink);user-select:none}
+.preview p{max-width:40ch;color:var(--dim)}
+
+footer{grid-column:1;display:flex;flex-wrap:wrap;gap:0 3ch}
+footer a{color:var(--dim);transition:color .15s}
+footer a:hover{color:var(--ink)}
+
+/* corner door to the ASCII solar system */
+.orrery{position:fixed;right:0;bottom:0;z-index:30;display:block;width:74px;height:74px;overflow:hidden;background:#000;
+  border:3px solid var(--ink);border-right:0;border-bottom:0;border-radius:100% 0 0 0;
+  transition:width .28s cubic-bezier(.2,.9,.3,1),height .28s cubic-bezier(.2,.9,.3,1);
+  animation:orreryIn .7s .3s backwards}
+@keyframes orreryIn{from{opacity:0;transform:translate(30px,30px)}}
+.orrery:hover,.orrery:focus-visible{width:147px;height:147px}
+.orrery:focus-visible{outline-offset:-6px;border-radius:100% 0 0 0}
+.orrery canvas{position:absolute;right:0;bottom:0;width:170px;height:170px;display:block}  /* drawn at 212, shown at 80% */
+@media (hover:none){.orrery{width:90px;height:90px}}
+
+@media (max-width:720px){
+  main{grid-template-columns:1fr}
+  .preview{display:none}
+  footer{padding-right:90px}
+}
+@media (prefers-reduced-motion:reduce){.orrery{animation:none;transition:none}}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Micah Sellers</h1>
+    <p>Mechatronics and robotics engineering, University of Alberta.</p>
+  </header>
+
+  <!-- Edit projects here. data-frames: a turntable baked by tools/ascii-bake from the project's STL. -->
+  <ul class="work" id="work">
+    <li><a href="projects/layer-height.html" data-frames="models/robot.json"
+      data-desc="Sensor acquisition and adaptive layer height control on a FANUC robot WAAM cell with a Lincoln Power Wave.">adaptive layer height <span>robot</span></a></li>
+    <li><a href="projects/waam-thermal.html" data-frames="models/thermalvideo.json"
+      data-desc="Thermal imaging pipeline for wire arc additive manufacturing at the Canadian Centre for Welding and Joining.">waam thermal pipeline <span>thermal camera</span></a></li>
+    <li><a href="projects/mctr-260-robot.html" data-frames="models/260car.json"
+      data-desc="Omnidirectional warehouse delivery robot for my mechatronics design course: mecanum drive, four NEMA 17 steppers, dual-core Pico W firmware with BLE control.">mctr 260 robot <span>mechatronics</span></a></li>
+  </ul>
+
+  <div class="preview" aria-hidden="true">
+    <pre id="ascii"></pre>
+    <p id="desc"></p>
+  </div>
+
+  <footer>
+    <a href="https://github.com/micah-sellers">github</a>
+    <a href="https://www.linkedin.com/in/micah-sellers">linkedin</a>
+    <a href="mailto:micahjtsws@gmail.com">email</a>
+  </footer>
+</main>
+
+<a class="orrery" id="orrery" href="solar-system.html" aria-label="Open the ASCII solar system"><canvas id="orreryCanvas" width="212" height="212" aria-hidden="true"></canvas></a>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ===================================================================== 1. project preview
+   Plays turntable frames baked offline by tools/ascii-bake (path-traced from each project's
+   STL). Switching projects decodes the new one out of noise, same language as the corner. */
+(() => {
+  const list = $("work"), pre = $("ascii"), desc = $("desc"), links = [...list.querySelectorAll("a")];
+  const GIB = "!@#$%^&*=+[]{}|;:<>?/~";
+  const hash = (a, b) => { let h = Math.imul(a, 374761393) ^ Math.imul(b, 668265263); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+
+  const bakes = {};
+  function bake(a) {
+    const url = a.dataset.frames;
+    if (!url) return null;
+    if (!bakes[url]) {
+      bakes[url] = { ready: null };
+      fetch(url).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+        .then((j) => { bakes[url].ready = j; if (a === cur) { swapT = 0; kick(); } })
+        .catch((e) => console.warn("preview: could not load", url, e));
+    }
+    return bakes[url].ready;
+  }
+
+  let cur = links[0], swapT = 0, t = 0, last = 0, raf = 0, shown = "";
+  function draw(now) {
+    const dt = last ? Math.min(.05, (now - last) / 1000) : 0; last = now;
+    if (!REDUCED) t += dt;
+    const B = bake(cur);
+    if (!B) { pre.textContent = ""; shown = ""; return; }
+    swapT = Math.min(1, swapT + dt / .35);
+    const f = REDUCED ? 0 : Math.floor(t * B.fps) % B.frames.length;
+    let s = B.frames[f];
+    if (swapT < 1) {
+      const tick = Math.floor(now / 50);
+      s = Array.from(s, (ch, i) => ch === " " || ch === "\n" || hash(i, 7) <= swapT ? ch : GIB[Math.floor(hash(i, tick) * GIB.length)]).join("");
+    }
+    if (s !== shown) { pre.textContent = s; shown = s; }
+  }
+  const visible = () => pre.offsetParent !== null && !document.hidden;
+  function loop(now) {
+    raf = 0;
+    if (!visible()) { last = 0; return; }
+    draw(now);
+    if (!REDUCED || swapT < 1 || !bake(cur)) raf = requestAnimationFrame(loop);
+  }
+  const kick = () => { if (!raf && visible()) raf = requestAnimationFrame(loop); };
+
+  function select(a) {
+    if (a === cur) return;
+    links.forEach((l) => l.classList.toggle("on", l === a));
+    cur = a; swapT = REDUCED ? 1 : 0; desc.textContent = a.dataset.desc; kick();
+  }
+  links.forEach((a) => { a.addEventListener("pointerenter", () => select(a)); a.addEventListener("focus", () => select(a)); });
+  list.addEventListener("pointerenter", () => list.classList.add("live"));
+  list.addEventListener("pointerleave", () => { if (!list.contains(document.activeElement)) list.classList.remove("live"); });
+  list.addEventListener("focusin", () => list.classList.add("live"));
+  list.addEventListener("focusout", (e) => { if (!list.contains(e.relatedTarget) && !list.matches(":hover")) list.classList.remove("live"); });
+
+  cur.classList.add("on"); desc.textContent = cur.dataset.desc;
+  links.forEach(bake);                                                     // start every download now so hovers are instant
+  addEventListener("resize", kick);
+  document.addEventListener("visibilitychange", kick);
+  kick();
+})();
+
+/* ===================================================================== 2. corner orrery
+   A small glyph-rendered teaser for solar-system.html: sun in the corner, planets on
+   quarter-circle orbits. Cells resolve out of noise on load; hover opens it up. */
+(() => {
+  const link = $("orrery"), cv = $("orreryCanvas"), c = cv.getContext("2d");
+  const S = 212, CWc = 7, CHc = 11, COLS = Math.ceil(S / CWc), ROWS = Math.ceil(S / CHc);
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  cv.width = cv.height = S * dpr; c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const GIB = "!@#$%^&*=+[]{}|;:<>?/~";
+  const hash = (x, y, s) => { let h = (Math.imul(x, 374761393) ^ Math.imul(y, 1376312589) ^ Math.imul(s, 2654435761)) >>> 0; h = Math.imul(h ^ (h >>> 13), 1540483477) >>> 0; return ((h ^ (h >>> 15)) >>> 0) / 0xFFFFFFFF; };
+  const PLANETS = [ // orbit radius px, colour, angular speed, phase
+    [50, [180, 158, 136], .50, 0.3], [68, [230, 200, 140], .34, 1.2], [88, [80, 150, 220], .25, 0.8], [108, [210, 90, 70], .18, 0.2],
+    [136, [200, 175, 140], .11, 1.0], [164, [210, 190, 150], .08, 0.5], [188, [150, 215, 215], .05, 1.3]];
+  const LABEL = "> solar system";
+  let t0 = 0, open = 0, wantOpen = 0, raf = 0, last = 0, visible = true;
+
+  function draw(now) {
+    if (!t0) t0 = now;
+    const t = (now - t0) / 1000, fade = Math.min(1, Math.max(0, (t - .5) / 1.8));
+    open += (wantOpen - open) * 0.25;
+    c.fillStyle = "#000"; c.fillRect(0, 0, S, S);
+    c.font = `${CHc}px 'Courier New',monospace`; c.textBaseline = "top";
+    const tick = Math.floor(t * 8);
+    const spots = PLANETS.map(([r, col, w, ph]) => { const a = Math.PI + ((ph + t * w * (REDUCED ? 0 : 1)) % (Math.PI / 2)); return [S + Math.cos(a) * r, S + Math.sin(a) * r, col]; });
+    for (let gy = 0; gy < ROWS; gy++) for (let gx = 0; gx < COLS; gx++) {
+      const px = gx * CWc + CWc / 2, py = gy * CHc + CHc / 2, d = Math.hypot(S - px, S - py);
+      let ch = "", r = 0, g = 0, b = 0;
+      if (d < 36) {                                                       // the sun
+        const n = hash(gx, gy, Math.floor(t * 3)) * .5 + .5; ch = "*@#$%&8"[Math.floor(hash(gx, gy, tick >> 2) * 7)];
+        r = 255 * n; g = (150 + 90 * n) * n; b = 60 * n;
+      } else {
+        for (const [sx, sy, col] of spots) if (Math.floor(sx / CWc) === gx && Math.floor(sy / CHc) === gy) { ch = "o"; [r, g, b] = col; }
+        if (!ch) for (const [rad] of PLANETS) if (Math.abs(d - rad) < 3) { ch = "."; r = 78; g = 92; b = 150; }
+        if (!ch && hash(gx, gy, 7) > .96) { ch = "."; r = g = b = 70 + hash(gx, gy, 9) * 110; }
+      }
+      if (!ch) continue;
+      const h = hash(gx, gy, 3);
+      if (fade < 1) { if (h > fade * 1.25) continue; if (h > fade * 1.25 - .18) ch = GIB[Math.floor(hash(gx, gy, tick) * GIB.length)]; }   // resolve out of noise
+      c.fillStyle = `rgb(${r | 0},${g | 0},${b | 0})`; c.fillText(ch, gx * CWc, gy * CHc);
+    }
+    if (open > .05) {                                                     // label, decoded as it opens
+      const x0 = S - (LABEL.length + 1) * CWc - 40, y0 = S - CHc * 5;
+      c.fillStyle = "#000"; c.fillRect(x0 - 3, y0 - 2, LABEL.length * CWc + 6, CHc + 4);
+      for (let i = 0; i < LABEL.length; i++) {
+        const ok = hash(i, 1, 5) < Math.pow(open, .5);
+        c.fillStyle = `rgba(200,215,255,${open})`;
+        c.fillText(ok ? LABEL[i] : GIB[Math.floor(hash(i, tick, 2) * GIB.length)], x0 + i * CWc, y0);
+      }
+    }
+  }
+  function loop(now) {
+    raf = 0;
+    if (now - last > 80) { last = now; draw(now); }                        // ~12 fps is plenty for glyphs
+    if (visible && !(REDUCED && (now - t0) > 4000 && Math.abs(wantOpen - open) < .01)) raf = requestAnimationFrame(loop);
+  }
+  const kick = () => { if (!raf) raf = requestAnimationFrame(loop); };
+  const setOpen = (v) => { wantOpen = v; kick(); };
+  link.addEventListener("pointerenter", () => setOpen(1)); link.addEventListener("pointerleave", () => setOpen(0));
+  link.addEventListener("focus", () => setOpen(1)); link.addEventListener("blur", () => setOpen(0));
+  document.addEventListener("visibilitychange", () => { visible = !document.hidden; if (visible) kick(); });
+  kick();
+})();
+</script>
+</body>
+</html>
