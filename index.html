@@ -46,12 +46,12 @@ footer a{color:var(--dim);transition:color .15s}
 footer a:hover{color:var(--ink)}
 
 /* corner door to the ASCII solar system */
-.orrery{position:fixed;right:0;bottom:0;z-index:30;display:block;width:74px;height:74px;overflow:hidden;background:#000;
+.orrery{position:fixed;right:0;bottom:0;z-index:30;display:block;width:125px;height:125px;overflow:hidden;background:#000;
   border:3px solid var(--ink);border-right:0;border-bottom:0;border-radius:100% 0 0 0;
   transition:width .28s cubic-bezier(.2,.9,.3,1),height .28s cubic-bezier(.2,.9,.3,1);
   animation:orreryIn .7s .3s backwards}
 @keyframes orreryIn{from{opacity:0;transform:translate(30px,30px)}}
-.orrery:hover,.orrery:focus-visible{width:147px;height:147px}
+.orrery:hover,.orrery:focus-visible{width:200px;height:200px}
 .orrery:focus-visible{outline-offset:-6px;border-radius:100% 0 0 0}
 .orrery canvas{position:absolute;right:0;bottom:0;width:170px;height:170px;display:block}  /* drawn at 212, shown at 80% */
 @media (hover:none){.orrery{width:90px;height:90px}}
@@ -68,7 +68,7 @@ footer a:hover{color:var(--ink)}
 <main>
   <header>
     <h1>Micah Sellers</h1>
-    <p>Mechatronics and robotics engineering, University of Alberta.</p>
+    <p>Mechatronics engineering, University of Alberta, class of 2029.</p>
   </header>
 
   <!-- Edit projects here. data-frames: a turntable baked by tools/ascii-bake from the project's STL. -->
