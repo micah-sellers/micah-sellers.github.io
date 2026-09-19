@@ -71,13 +71,14 @@ footer a:hover{color:var(--ink)}
     <p>Mechatronics engineering, University of Alberta, class of 2029.</p>
   </header>
 
-  <!-- Edit projects here. data-frames: a turntable baked by tools/ascii-bake from the project's STL. -->
+  <!-- Edit projects here. data-frames: a turntable baked by tools/ascii-bake from the project's STL.
+       No href: the lines only drive the preview. tabindex keeps them reachable by keyboard. -->
   <ul class="work" id="work">
-    <li><a href="projects/layer-height.html" data-frames="models/robot.json"
+    <li><a tabindex="0" data-frames="models/robot.json"
       data-desc="Sensor acquisition and adaptive layer height control on a FANUC robot WAAM cell with a Lincoln Power Wave.">adaptive layer height <span>robot</span></a></li>
-    <li><a href="projects/waam-thermal.html" data-frames="models/thermalvideo.json"
+    <li><a tabindex="0" data-frames="models/thermalvideo.json"
       data-desc="Thermal imaging pipeline for wire arc additive manufacturing at the Canadian Centre for Welding and Joining.">waam thermal pipeline <span>thermal camera</span></a></li>
-    <li><a href="projects/mctr-260-robot.html" data-frames="models/260car.json"
+    <li><a tabindex="0" data-frames="models/260car.json"
       data-desc="Omnidirectional warehouse delivery robot for my mechatronics design course: mecanum drive, four NEMA 17 steppers, dual-core Pico W firmware with BLE control.">mctr 260 robot <span>mechatronics</span></a></li>
   </ul>
 
