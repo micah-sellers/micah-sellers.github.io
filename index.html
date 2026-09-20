@@ -59,7 +59,9 @@ header p{color:var(--dim)}
 /* fixed-size slot: whatever plays in it can't move the layout. The frame is pinned at its
    top-left and any larger bake spills down and right; the description sits at a fixed spot below. */
 .preview{grid-column:2;align-self:center;display:grid;grid-template-rows:312px 6.4em;row-gap:16px}
-.preview pre{width:60em;height:52em;overflow:visible;font:6px/1.0833 'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;white-space:pre;color:var(--ink);user-select:none}
+/* glyph size follows the bake: any cols x rows is scaled to fit the 360 x 312 slot (--cols/--rows set from the JSON) */
+.preview pre{--cols:100;--rows:48;width:calc(var(--cols) * .6em);height:calc(var(--rows) * 1.0833em);overflow:visible;
+  font-size:min(calc(360px / (var(--cols) * .6)),calc(312px / (var(--rows) * 1.0833)));line-height:1.0833;font-family:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;white-space:pre;color:var(--ink);user-select:none}
 .preview p{max-width:40ch;color:var(--dim)}
 
 footer{grid-column:1;display:flex;flex-wrap:wrap;gap:0 3ch}
@@ -80,10 +82,10 @@ footer a:hover{color:var(--ink)}
 /* phones: headline, then the frame, then the project list, then its description */
 @media (max-width:720px){
   main{height:100vh;height:100dvh;margin-bottom:0;grid-template-columns:1fr;
-    grid-template-rows:auto auto auto minmax(0,1fr) auto;row-gap:clamp(12px,3dvh,24px)}
+    grid-template-rows:auto min(312px,calc((100vw - 2 * var(--pad)) * .8667),calc(100dvh - 400px)) auto minmax(0,1fr) auto;   /* frame row: fixed per screen, not per bake */row-gap:clamp(12px,3dvh,24px)}
   .preview{display:contents}
-  .preview pre{grid-row:2;justify-self:center;
-    font-size:min(6px,calc((100vw - 2 * var(--pad)) / 60),calc((100dvh - 400px) / 52))}   /* fit width and height */
+  .preview pre{grid-row:2;justify-self:center;align-self:start;
+    font-size:min(calc(360px / (var(--cols) * .6)),calc((100vw - 2 * var(--pad)) / (var(--cols) * .6)),calc((100dvh - 400px) / (var(--rows) * 1.0833)))}   /* fit width and height */
   .work{grid-row:3;align-self:start}
   .preview p{grid-row:4;overflow:hidden}
   footer{grid-row:5;padding-right:90px}
@@ -99,7 +101,7 @@ footer a:hover{color:var(--ink)}
 <main>
   <header>
     <h1>Micah Sellers</h1>
-    <p>Mechatronics engineering, University of Alberta, class of 2029.</p>
+    <p>Mechatronics engineering | University of Alberta | class of 2029.</p>
   </header>
 
   <!-- Edit projects here. data-frames: a turntable baked by tools/ascii-bake from the project's STL.
@@ -158,6 +160,9 @@ const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (!REDUCED) t += dt;
     const B = bake(cur);
     if (!B) { pre.textContent = ""; shown = ""; return; }
+    if (pre.dataset.size !== B.cols + "x" + B.rows) {                     // size the glyphs to this bake's grid
+      pre.style.setProperty("--cols", B.cols); pre.style.setProperty("--rows", B.rows); pre.dataset.size = B.cols + "x" + B.rows;
+    }
     swapT = Math.min(1, swapT + dt / .35);
     const f = REDUCED ? 0 : Math.floor(t * B.fps) % B.frames.length;
     let s = B.frames[f];
